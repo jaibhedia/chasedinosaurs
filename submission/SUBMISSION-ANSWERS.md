@@ -11,9 +11,8 @@ Verified live on 2026-09-13 before writing. Everything below is true as of that 
 | **Subgraph** | https://api.studio.thegraph.com/query/1760131/chase/0.98.1 |
 | **Architecture diagram** | [`submission/ARCHITECTURE.md`](ARCHITECTURE.md) *(Arc requires this)* |
 
-> ⚠️ **Do not submit `chase.abstractstudio.in`.** That deployment is gone — it returns
-> Vercel's `DEPLOYMENT_NOT_FOUND`. The live domain is **chasedinosaurs.fun**. Every doc in
-> this repo was pointing at the dead one; that's now fixed.
+> The live domain is **https://chasedinosaurs.fun** — use it everywhere (form, video end
+> card, posts).
 
 ---
 

@@ -52,9 +52,10 @@ server on Render), not a self-contained HTML bundle. itch's "HTML" embed expects
 | **Trailer** | optional — a 20–30s screen capture helps a lot. |
 | **Visibility** | Draft → review → Public. |
 
-> **AI disclosure = Yes.** itch now requires this if *any* content is AI-generated. Your character
-> art (alien, creepy-guy, etc.) looks AI-generated and the code was AI-assisted. Tick **Yes** and
-> you can note "AI-assisted art and code, hand-edited." Being honest here avoids takedowns.
+> **AI disclosure.** The art is not AI-generated: it's original pixel art plus itch.io asset
+> packs, credited in [`CREDITS.md`](../CREDITS.md). The *code* was AI-assisted (see
+> `AI_USAGE.md`) — read itch's current disclosure wording and tick **Yes** if it covers code.
+> Credit the itch.io pack authors on the page too; most packs require it.
 
 ### Description (paste into the Description box)
 

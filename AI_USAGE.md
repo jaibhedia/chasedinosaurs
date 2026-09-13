@@ -28,8 +28,10 @@ Tag `pre-ethonline2026` points at `599d858`, the last commit before ETHOnline 20
 **Human (Shantanu Swami)** — product direction and every decision that shaped the build:
 which sponsor tracks to target and why; the two-lane design that keeps Free Play
 walletless while Ranked carries the Web3 layer; the escrow's trust model; scope calls
-under a 5-day deadline; all game design, pixel art, audio, and level design; and review
-of every contract change before deployment. Mentor feedback (0x, Julio Cruz, Edgar
+under a 5-day deadline; all game design, audio, and level design; the game's original
+pixel art, with the remaining art sourced from itch.io asset packs (see
+[`CREDITS.md`](CREDITS.md)); and review of every contract change before deployment. No
+game art is AI-generated. Mentor feedback (0x, Julio Cruz, Edgar
 Navarro, tingowiggle) was gathered and triaged by the author.
 
 **AI (Claude Code)** — implementation assistance under that direction: research into
