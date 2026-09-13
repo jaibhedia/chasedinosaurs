@@ -130,7 +130,7 @@ NEXT_PUBLIC_PRIVY_APP_ID           cmtt7l9wx00bg0bl7wn9q6csh
 NEXT_PUBLIC_ARC_TESTNET_RPC_URL    https://rpc.testnet.arc.network
 NEXT_PUBLIC_ARC_CHASESTAKE_ADDRESS 0xD648def45026f437351D797dC3574fa97507BA83
 NEXT_PUBLIC_SUBGRAPH_URL           https://api.studio.thegraph.com/query/1760131/chase/0.98.1
-NEXT_PUBLIC_SITE_URL               https://chase.abstractstudio.in
+NEXT_PUBLIC_SITE_URL               https://chasedinosaurs.fun
 ```
 
 All `NEXT_PUBLIC_` — these ship to the browser by design. No secrets here, ever.
@@ -153,13 +153,13 @@ Two settings, both easy to forget, and the symptom for each is "lobby loads but 
 
 **On Render** → Environment → set and redeploy:
 ```
-CORS_ORIGIN    https://chase.abstractstudio.in
+CORS_ORIGIN    https://www.chasedinosaurs.fun
 ```
 Comma-separate if you also want the `*.vercel.app` preview URL.
 
 **In the [Privy dashboard](https://dashboard.privy.io)** → your app → **Allowed origins**:
 ```
-https://chase.abstractstudio.in
+https://www.chasedinosaurs.fun
 ```
 Miss this and sign-in fails on production while working perfectly on localhost.
 
@@ -194,6 +194,6 @@ Walk it in an incognito window:
 
 ## Custom domain (optional)
 
-Vercel → Settings → Domains → add `chase.abstractstudio.in`, then the CNAME it gives you at
+Vercel → Settings → Domains → add `chasedinosaurs.fun`, then the CNAME it gives you at
 your DNS provider. **Then go back and update `CORS_ORIGIN` on Render** — a new domain is a new
 origin, and the socket server will refuse it until you say so.

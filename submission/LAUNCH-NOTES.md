@@ -1,6 +1,6 @@
 # Chase Dinosaurs — Launch & Feedback Kit
 
-Live game: **https://chase.abstractstudio.in**
+Live game: **https://chasedinosaurs.fun**
 
 ---
 
@@ -16,12 +16,12 @@ server on Render), not a self-contained HTML bundle. itch's "HTML" embed expects
    game redirects to the landing URL when it gets no config handoff, so the itch iframe would
    just bounce.
 3. **Multiplayer CORS** — the Render server must allow itch's iframe origin. If `CORS_ORIGIN` is
-   pinned to `chase.abstractstudio.in`, the embed is blocked. (Leave it unset = allow any, or add
+   pinned to `chasedinosaurs.fun`, the embed is blocked. (Leave it unset = allow any, or add
    itch origins.)
 
 ### Two realistic options
 - **A. itch as a landing page (do this now).** Skip the embed. Fill the page with cover +
-  screenshots + trailer + a big "▶ Play free in your browser → chase.abstractstudio.in" link in
+  screenshots + trailer + a big "▶ Play free in your browser → chasedinosaurs.fun" link in
   the description. Great for discovery and feedback, zero code.
 - **B. Proper embeddable build (later, ~half a day of work).** A standalone single-player-vs-bots
   build: `base: './'`, boots straight into a quick match (no shell), multiplayer optional pointing
@@ -61,15 +61,18 @@ server on Render), not a self-contained HTML bundle. itch's "HTML" embed expects
 ```
 🦖 Chase Dinosaurs
 
-A fast-paced, top-down multiplayer tag game you play right in your browser.
+A fast-paced, top-down multiplayer chase game you play right in your browser.
 
-One player is the CHASER. Everyone else runs. Survive 30 seconds — last one tagged wins.
+One golden egg. Whoever holds it is the target — everyone else hunts them. Drop it and
+the hunt turns on whoever grabs it next. Be holding the egg when the 60 seconds run out
+and you win.
 
-▶ Play free (no install): https://chase.abstractstudio.in
+▶ Play free (no install): https://chasedinosaurs.fun
 
-• 6 characters, each with a unique power-up — Speed Trail, Earthquake, Power Punch,
-  Teleport, Invisibility, Force Field (unlocks mid-round)
-• Solo vs AI bots, or multiplayer with 2–4 friends via room codes
+• 4 characters, each with a unique power-up that unlocks 15s into the round —
+  Doux (Super Speed), Mort (Earthquake), Tard (Invincibility Shield), Vita (Teleport)
+• 3 maps — Office Space, Summer Plains, and Inferno Keep with its slow-you-down lava
+• Solo vs AI opponents, or multiplayer with 2–4 friends via room codes
 • Proximity voice chat — hear players who are close to you
 • 16-bit pixel-art adventure look, CRT scanlines, chunky SNES vibes
 
@@ -84,11 +87,12 @@ This is an early build and I'm actively improving it — feedback very welcome!
 
 **Main tweet:**
 ```
-🦖 Chase Dinosaurs — a 30-second multiplayer tag game in your browser.
+🦖 Chase Dinosaurs — a 60-second multiplayer chase game in your browser.
 
-One chaser, everyone else runs. 6 characters, 6 power-ups, total chaos.
+One golden egg. Whoever holds it is the target. Hold it when the clock hits zero and you
+win. 4 characters, 4 power-ups, total chaos.
 
-Free, no install 👉 chase.abstractstudio.in
+Free, no install 👉 chasedinosaurs.fun
 
 #buildinpublic #gamedev #indiedev
 ```
@@ -101,7 +105,11 @@ netcode, Next.js shell, deployed on Vercel + Render. Pixel-art 16-bit look.
 3/ Hardest part was the netcode — remote players felt laggy/choppy. Added velocity
 dead-reckoning so they glide smoothly between 30Hz packets instead of stuttering. Huge difference.
 
-4/ It's rough and I want feedback. Grab 1–3 friends, spin up a room, and tell me what feels off.
+4/ The AI opponents aren't scripted. An LLM sets each one's strategy, persona and taunt
+every few seconds; the game executes that intent per frame. Cheap enough to run live,
+and they talk trash while they hunt you.
+
+5/ It's rough and I want feedback. Grab 1–3 friends, spin up a room, and tell me what feels off.
 Replies/DMs open 🙏
 ```
 
@@ -117,17 +125,19 @@ every comment, never drop just a link.
 
 **Title:**
 ```
-[Browser] Chase Dinosaurs — a 30-second real-time multiplayer tag game (free, no install)
+[Browser] Chase Dinosaurs — a 60-second real-time multiplayer chase game (free, no install)
 ```
 
 **Body:**
 ```
-Hey all — I made Chase Dinosaurs, a fast browser game: one player is the chaser, everyone
-else runs for 30 seconds. 6 characters, each with a unique power-up (speed trail, teleport,
-invisibility, force field…). Play solo vs bots or multiplayer with 2–4 friends via room codes,
+Hey all — I made Chase Dinosaurs, a fast browser game built around one golden egg. Whoever
+holds it is the target and everyone else hunts them; drop it and the hunt turns on whoever
+picks it up. Hold it when the 60 seconds are up and you win. 4 characters, each with a
+unique power-up that unlocks mid-round (super speed, earthquake, invincibility shield,
+teleport), across 3 maps. Play solo vs AI or multiplayer with 2–4 friends via room codes,
 plus proximity voice chat.
 
-▶ Play free, no install: https://chase.abstractstudio.in
+▶ Play free, no install: https://chasedinosaurs.fun
 
 It's an early build and I'm after honest feedback — controls, feel, lag, fun factor. What would
 make you play a second round? What felt off?

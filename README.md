@@ -12,7 +12,7 @@ hunts them. Ranked matches escrow **real USDC on Arc** and the winner takes the 
 Chase was built for **The Zero Cup** (0G's vibe-coding tournament) as a single-player and
 casual-multiplayer chase game with AI opponents. Carried into this event:
 
-- The Phaser game engine, maps, six characters, power-ups, proximity voice chat
+- The Phaser game engine, three maps, four characters, power-ups, proximity voice chat
 - Socket.IO rooms, lobby, reconnect handling
 - **0G Compute** agent brains — LLM inference setting each agent's strategy, persona and taunts
 
@@ -119,7 +119,7 @@ to its older behaviour, which the boot log states outright.
 
 ### Base gameplay (carried over from the Chase engine)
 
-- 6 characters each with a unique power-up (unlocks at 15s)
+- 4 characters, each with a unique power-up (unlocks at 15s): Doux (Super Speed), Mort (Earthquake), Tard (Invincibility Shield), Vita (Teleport)
 - Single player (vs AI agents) or multiplayer (2–4 players via Socket.io)
 - Proximity voice chat, installable landscape PWA
 
@@ -275,7 +275,7 @@ Two services: the **Next shell with the game embedded** (Vercel) and the **Socke
 ### 1. Socket server → Render
 - Push the repo, then Render → **New → Blueprint** (uses [`render.yaml`](render.yaml)): `rootDir: server`,
   `npm install` + `npm start`, health check `/health`. PORT is injected by Render automatically.
-- Set **`CORS_ORIGIN`** to your site URL (`https://chase.abstractstudio.in`). Leave
+- Set **`CORS_ORIGIN`** to your site URL (`https://www.chasedinosaurs.fun`). Leave
   unset to allow any origin.
 
 
@@ -286,7 +286,7 @@ Two services: the **Next shell with the game embedded** (Vercel) and the **Socke
 
   | Variable | Value |
   | --- | --- |
-  | `NEXT_PUBLIC_SOCKET_URL` | your Render URL (`https://chase.onrender.com`) |
+  | `NEXT_PUBLIC_SOCKET_URL` | your Render URL (`https://chase-dinosaurs-4qb2.onrender.com`) |
   | `VITE_SOCKET_URL` | same Render URL (read by the game build) |
 
   `NEXT_PUBLIC_GAME_URL` and `VITE_LANDING_URL` are **not needed** — the embedded same-origin paths

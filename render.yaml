@@ -28,7 +28,7 @@ services:
         value: production
 
       # Comma-separated allowed browser origins (your deployed site URL),
-      # e.g. https://chase.abstractstudio.in
+      # e.g. https://www.chasedinosaurs.fun
       - key: CORS_ORIGIN
         sync: false
 

@@ -6,7 +6,7 @@
  * `NEXT_PUBLIC_SITE_URL` (e.g. in the Vercel project env) so previews and prod
  * each point at the right host.
  */
-const DEFAULT_URL = 'https://chase.abstractstudio.in';
+const DEFAULT_URL = 'https://chasedinosaurs.fun';
 
 export const siteConfig = {
   name: 'Chase Dinosaurs',

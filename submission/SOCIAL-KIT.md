@@ -1,6 +1,6 @@
 # Social kit — Chase Dinosaurs
 
-**Your handle:** `@ShantanuSwami11` · **Site:** https://chase.abstractstudio.in
+**Your handle:** `@ShantanuSwami11` · **Site:** https://chasedinosaurs.fun
 
 **Sponsor handles** — tag only the ones you actually submitted to. Tagging a sponsor you
 didn't build for reads as spam and they do notice.
@@ -90,7 +90,7 @@ A stack list never is.
 **8/**
 > Built for @ETHGlobal ETHOnline 2026.
 >
-> Play: chase.abstractstudio.in
+> Play: chasedinosaurs.fun
 > Code: github.com/jaibhedia/chasedinosaurs
 >
 > [demo video]
@@ -134,7 +134,7 @@ Different room, different register. These people build; skip the marketing voice
 > threat over a closer but unproven one. The Graph is load-bearing for gameplay, not just
 > the leaderboard.
 >
-> Play: chase.abstractstudio.in
+> Play: chasedinosaurs.fun
 > Code: github.com/jaibhedia/chasedinosaurs
 > Demo: [link]
 >
@@ -159,7 +159,7 @@ Crypto-native audience, so skip the explanation and go straight to the mechanism
 >
 > subgraph → agent prompt → targeting. 60s matches, USDC escrow on arc
 >
-> chase.abstractstudio.in
+> chasedinosaurs.fun
 
 ---
 
