@@ -223,8 +223,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    // Assets live under the Vite base URL (`/` in dev, `/game-app/` in the embedded
-    // production build), so prefix every load with BASE_URL or they 404 in prod.
+    // Prefix every load with the Vite base URL so assets resolve under any base path.
     const base = import.meta.env.BASE_URL;
     // FreeEnviro grassland sheet — grass ground tile + tree/bush/dirt art. This single
     // sheet is the ONLY map tileset; ground is a seamless TileSprite, props are sub-rect

@@ -1,27 +1,20 @@
-Copyright © 2026 Shantanu Swami. All rights reserved.
+Copyright © 2026 Abstract Studio. All rights reserved.
 
-This software and its associated source code, assets, and documentation
-(the "Software") are the proprietary and confidential property of Shantanu
-Swami (the "Author").
+Chase Dinosaurs, including its source code, artwork, characters, audio, design and
+documentation (the "Software"), is the proprietary and confidential property of
+Abstract Studio.
 
-EXCEPTION — THE `packages/` DIRECTORY
+No license or right is granted, expressly or by implication, to any person to use,
+copy, reproduce, modify, adapt, publish, translate, distribute, sublicense, sell, or
+create derivative works of the Software, in whole or in part, without the prior
+written consent of Abstract Studio.
 
-This license does NOT apply to the contents of the `packages/` directory. All
-code, documentation, and other material under `packages/` is licensed separately
-and permissively under the MIT License; see `packages/LICENSE`. Where this
-license and the MIT License in `packages/LICENSE` conflict as to material under
-`packages/`, the MIT License controls.
+Third-party assets listed in CREDITS.md remain the property of their authors and are
+used under their own licenses; this notice does not cover them.
 
-The Software is made available publicly for the sole purpose of review and
-evaluation (including hackathon judging). No license or right is granted,
-expressly or by implication, to any person to use, copy, reproduce, modify,
-adapt, publish, translate, distribute, sublicense, sell, or create derivative
-works of the Software, in whole or in part, without the prior written consent
-of the Author.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL ABSTRACT STUDIO BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.

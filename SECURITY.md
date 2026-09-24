@@ -1,52 +1,31 @@
 # Security
 
-Status of the Chase · Zero security posture and the hardening applied to the multiplayer
-backend (`server/`), the Next.js shell (`app/`), and the contracts tooling (`contracts/`).
+How the multiplayer server (`server/`) and the web app (`src/`) are hardened, and what is
+still open.
 
 ## Secrets
-- Real `.env` files (root, `server/`, `game-app/`, `contracts/`) are git-ignored and have
-  **never been committed** — verified across full git history (private key + router API
-  key strings absent from every revision). Only `.env.example` placeholders are tracked.
-- `OG_PRIVATE_KEY` / `OG_ROUTER_API_KEY` are server-side only and are never prefixed
-  `NEXT_PUBLIC_`/`VITE_`, so they cannot reach the browser bundle.
+- Real `.env` files are git-ignored; only `.env.example` placeholders are tracked.
+- The only secret is the AI provider key (`AI_API_KEY`). It lives in the server's env and is
+  never prefixed `VITE_`, so it cannot reach the web bundle. Anything `VITE_*` is public.
 
-## Multiplayer backend hardening (`server/src/index.ts`)
-The Socket.IO server is a relay; these guards close the abuse surface:
+## Multiplayer server (`server/src/index.ts`)
+- **Room-membership gating.** `isRoomMember()` / `canUseRoom()` gate every relay handler, so a
+  client cannot emit into a room it never joined. `canUseRoom` also allows single-player
+  `solo-*` ids, which have no fan-out.
+- **Payload validation.** Room codes must match `^[A-Z0-9]{6}$`; names are clamped to 24
+  chars; `characterId` to 1–4; positions and velocities are rebuilt from range-checked
+  numbers. `userId` is required on create/join.
+- **DoS caps.** `MAX_ROOMS = 1000`; per-socket sliding-window limits on `create-room`
+  (10/min) and `join-room` (30/min); `maxHttpBufferSize` of 100 KB per frame.
+- **HTTP.** `helmet()` headers, `x-powered-by` off, 120 req/min per IP.
+- **CORS.** Reflects any origin in dev and warns loudly in production when `CORS_ORIGIN` is
+  unset. **Set `CORS_ORIGIN` in production**, including `capacitor://localhost` and
+  `https://localhost` once the native apps ship.
 
-- **Room-membership gating** — `isRoomMember()` / `canUseRoom()` now gate every relay
-  handler (`player-input`, `game-state-update`, `agent-state`, `egg-state`,
-  `game-finished`, `agent-tick`, `store-replay`). A client can no longer emit into a room
-  it never joined (previously any client could spoof/grief any 6-char room code).
-  `canUseRoom` additionally allows single-player `solo-*` rooms (no fan-out).
-- **Payload validation/sanitization** — `roomCode` must match `^[A-Z0-9]{6}$`; player
-  names are clamped to 24 chars; `characterId` is clamped to 1–4; `player-input`
-  coordinates/velocities are rebuilt from range-checked numbers (drops NaN/Infinity/absurd
-  values). `userId` is required on create/join.
-- **DoS caps** — `MAX_ROOMS = 1000` bounds the in-memory room store; a per-socket
-  sliding-window limiter throttles `create-room` (10/min) and `join-room` (30/min); the
-  limiter map is cleared on disconnect.
-- **Frame-size cap** — `maxHttpBufferSize: 1e5` (100 KB) on the Socket.IO server mitigates
-  the socket.io unbounded-binary-attachment advisory and giant-frame memory exhaustion.
-- **HTTP hardening** — `helmet()` security headers, `x-powered-by` disabled, and an
-  `express-rate-limit` of 120 req/min on the HTTP routes (`/health`, `/leaderboard`).
-- **CORS** — defaults to reflecting any origin for local dev; logs a loud warning when
-  `NODE_ENV=production` and `CORS_ORIGIN` is unset. **Set `CORS_ORIGIN` in production.**
-
-## Dependency audit
-Safe, non-breaking `npm audit fix` applied to all three packages (no protocol-breaking
-major bumps):
-
-| Package    | Before | After | Remaining |
-|------------|--------|-------|-----------|
-| root       | 15     | 8     | `js-yaml`, `postcss` — **dev/build-only** (jest/babel/postcss chain); `postcss` fix needs `--force`. Not shipped to users. |
-| server     | 8      | 5     | `axios`, `ws` — **no upstream fix**, transitive (via the 0G SDK / socket.io), not directly reachable; giant-frame risk mitigated by `maxHttpBufferSize`. |
-| contracts  | 2      | 2     | `tmp` — fix needs `--force`; **deploy-time tooling only**, not a runtime/network surface. |
-
-Re-run `npm audit` in each package to see current detail. The remaining items are
-intentionally left to avoid breaking the multiplayer protocol / build tooling.
-
-## Known limitation (by design, for now)
-`userId` is a client-supplied guest token (no auth), so it is **spoofable**. This is fine
-for free cosmetic play. It **must be replaced with real authentication before any
-real-money / wagered tournament mode** — which is also why staking is intentionally out of
-scope and Tournaments ship as "Coming Soon" until the server is fully authoritative.
+## Known limitations
+- `userId` is a client-generated guest token with no authentication, so it is spoofable.
+  That is acceptable for a free game with no accounts, rankings or purchases. It must be
+  replaced with real auth before anything with value is attached to a player (paid
+  cosmetics, ranked ladders).
+- The server trusts client-reported positions (clamped, not simulated). A modified client
+  can move faster than allowed. See ROADMAP.md, Phase 1, for making the server authoritative.
