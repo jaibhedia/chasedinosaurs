@@ -63,6 +63,10 @@ interface Room {
   endTimer: ReturnType<typeof setTimeout> | null;
   /** Quick Play room: filled by matchmaking and started on a timer, no ready-up. */
   quick: boolean;
+  /** Who has reported whom (reported userId → reporter userIds). */
+  reports: Map<string, Set<string>>;
+  /** Players dropped from voice after reports. */
+  voiceBlocked: Set<string>;
   /** Server time a Quick Play room starts, if it's counting down. */
   startsAt: number | null;
   autoStart: ReturnType<typeof setTimeout> | null;
@@ -86,6 +90,8 @@ function newRoom(mapId: string, isPublic: boolean, host: LobbyPlayer, quick = fa
     match: null,
     endTimer: null,
     quick,
+    reports: new Map(),
+    voiceBlocked: new Set(),
     startsAt: null,
     autoStart: null,
   };
@@ -695,7 +701,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
   // --- Proximity voice chat: WebRTC signalling relay (room-scoped) ---
   socket.on('voice-join', ({ roomCode, userId }: { roomCode: string; userId: string }) => {
     const room = rooms.get(roomCode);
-    if (!room) return;
+    if (!room || room.voiceBlocked.has(userId)) return;
     socket.join(`voice:${roomCode}`);
     // Tell the newcomer who's already in the voice channel so it can call them.
     const peers = [...room.voiceUsers].filter((u) => u !== userId);
@@ -709,6 +715,31 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     socket.leave(`voice:${roomCode}`);
     rooms.get(roomCode)?.voiceUsers.delete(userId);
     socket.to(`voice:${roomCode}`).emit('voice-peer-left', { userId });
+  });
+
+  /**
+   * Report a player (today: for voice chat). Logged for moderation; when two different
+   * players in the room have reported the same person, that person is dropped from the
+   * room's voice channel for the rest of the room's life.
+   */
+  socket.on('report-player', (payload: { roomCode?: string; userId?: string; reason?: string }) => {
+    const rc = payload?.roomCode;
+    if (!isRoomMember(socket, rc) || !rateOk(`${socket.id}:report`, 5, 60_000)) return;
+    const room = rooms.get(rc)!;
+    const target = cleanStr(payload.userId, 64);
+    const reporter = socket.data.userId as string;
+    if (!target || target === reporter || !room.players.some((p) => p.user_id === target)) return;
+    const by = room.reports.get(target) ?? new Set<string>();
+    by.add(reporter);
+    room.reports.set(target, by);
+    console.warn(`[report] room=${rc} reported=${target} by=${reporter} reason=${cleanStr(payload.reason, 16) || 'unspecified'} count=${by.size}`);
+    if (by.size >= 2 && !room.voiceBlocked.has(target)) {
+      room.voiceBlocked.add(target);
+      room.voiceUsers.delete(target);
+      io.to(`voice:${rc}`).emit('voice-peer-left', { userId: target });
+      const sid = socketIdFor(room, target);
+      if (sid) io.to(sid).emit('voice-blocked');
+    }
   });
 
   // Relay an SDP/ICE message to a specific peer in the room.

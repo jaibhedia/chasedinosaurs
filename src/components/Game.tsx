@@ -8,6 +8,7 @@ import ConnectionStatus from '@/components/ConnectionStatus';
 import VoiceChat from '@/components/VoiceChat';
 import GameMenu from '@/components/GameMenu';
 import NetStats from '@/components/NetStats';
+import { CoachHints } from '@/components/CoachHints';
 
 export interface GameProps {
   onGameEnd: () => void;
@@ -88,6 +89,7 @@ export function Game({ onGameEnd }: GameProps) {
     >
       <NetStats />
       <GameHUD />
+      <CoachHints />
       <ConnectionStatus />
       <VoiceChat />
       <GameMenu />

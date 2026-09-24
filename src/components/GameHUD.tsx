@@ -36,14 +36,6 @@ export default function GameHUD() {
 
   return (
     <>
-      {!isMobile && (
-        <div className="fixed top-24 left-0 right-0 z-[50] pointer-events-none flex justify-center">
-          <h1 className="px-heading text-2xl md:text-3xl tracking-widest uppercase" style={{ color: '#ffc93c', textShadow: '4px 4px 0 #11111c' }}>
-            CHASE
-          </h1>
-        </div>
-      )}
-
       <motion.div
         className="fixed top-3 left-0 right-0 z-[55] pointer-events-none"
         style={{

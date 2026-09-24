@@ -67,6 +67,8 @@ export class ProximityVoice {
 
   private localStream: MediaStream | null = null;
   private peers = new Map<string, PeerEntry>();
+  /** Peers this player has muted; survives their reconnects for the session. */
+  private blocked = new Set<string>();
   private rafId: number | null = null;
   private muted = false;
   private running = false;
@@ -128,6 +130,22 @@ export class ProximityVoice {
     return this.muted;
   }
 
+  /** Stop hearing one player (or start again). */
+  setPeerMuted(peerId: string, muted: boolean): void {
+    if (muted) this.blocked.add(peerId);
+    else this.blocked.delete(peerId);
+    const entry = this.peers.get(peerId);
+    if (entry) entry.audio.muted = muted;
+  }
+
+  isPeerMuted(peerId: string): boolean {
+    return this.blocked.has(peerId);
+  }
+
+  peerIds(): string[] {
+    return [...this.peers.keys()];
+  }
+
   // --- signalling handlers (arrow fns so `this` binds for on/off) ---
 
   private handleVoicePeers = ({ peers }: { peers: string[] }) => {
@@ -181,6 +199,7 @@ export class ProximityVoice {
     audio.autoplay = true;
     (audio as any).playsInline = true;
     audio.volume = 0;
+    audio.muted = this.blocked.has(peerId);
 
     pc.onicecandidate = (e) => {
       if (e.candidate) this.signal(peerId, e.candidate.toJSON());
