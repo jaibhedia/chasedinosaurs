@@ -28,6 +28,7 @@ import rateLimit from 'express-rate-limit';
 import { Server, type Socket } from 'socket.io';
 import { decideIntents, forgetRoom, type AgentSnapshot } from './agents/agentBrain';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
+import { Match } from './match';
 
 const PORT = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 /** How long a disconnected player's slot is held open for them to come back. */
@@ -56,6 +57,10 @@ interface Room {
   graceTimers: Map<string, ReturnType<typeof setTimeout>>;
   /** user_ids currently in the proximity voice channel. */
   voiceUsers: Set<string>;
+  /** The match in progress: egg ownership, clock, stats. Null in the lobby. */
+  match: Match | null;
+  /** Fires at the buzzer to settle the match. */
+  endTimer: ReturnType<typeof setTimeout> | null;
 }
 
 /** In-memory room store, keyed by 6-char room code. */
@@ -74,7 +79,7 @@ function genRoomCode(): string {
 }
 
 /** Public-facing player shape, broadcast to everyone in the room. */
-function publicPlayers(room: Room): LobbyPlayer[] {
+function publicPlayers(room: Room): Array<LobbyPlayer & { host: boolean }> {
   return room.players.map((p) => ({
     id: p.id,
     player_name: p.player_name,
@@ -83,7 +88,43 @@ function publicPlayers(room: Room): LobbyPlayer[] {
     character_id: p.character_id,
     connected: p.connected,
     socket_id: p.socket_id,
+    host: p.user_id === room.hostUserId,
   }));
+}
+
+/** Drop a player from a room: hands the host role on, or closes an empty room. */
+function removePlayer(rc: string, room: Room, uid: string): void {
+  room.players = room.players.filter((p) => p.user_id !== uid);
+  if (room.players.length === 0) {
+    if (room.endTimer) clearTimeout(room.endTimer);
+    rooms.delete(rc);
+    forgetRoom(rc);
+    return;
+  }
+  if (room.hostUserId === uid) room.hostUserId = room.players[0].user_id;
+  io.to(rc).emit('player-left', {
+    userId: uid,
+    players: publicPlayers(room),
+    currentPlayers: room.players.length,
+  });
+}
+
+/**
+ * The buzzer. The server's clock decides when the match is over and who won, so every
+ * screen shows the same result. The room then drops back to the lobby, unready, so the
+ * same group can go again.
+ */
+function finishMatch(rc: string): void {
+  const room = rooms.get(rc);
+  if (!room?.match || room.match.ended) return;
+  const result = room.match.finish();
+  room.match = null;
+  room.endTimer = null;
+  room.started = false;
+  room.serverStartTime = null;
+  for (const p of room.players) p.is_ready = false;
+  io.to(rc).emit('match-result', result);
+  io.to(rc).emit('room-update', { room: { map_id: room.mapId }, players: publicPlayers(room), readyPlayers: 0 });
 }
 
 /** Find the live socket id for a user in a room (for targeted voice relay). */
@@ -136,7 +177,7 @@ function isRoomMember(socket: Socket<any, any, any, SocketData>, roomCode: unkno
 
 /** Membership guard that also allows a single-player `solo-<userId>` room (which has no
  *  Socket.IO fan-out, so it can't reach anyone else). Used by relay handlers that both
- *  single-player and multiplayer emit (agent-tick, game-finished). */
+ *  single-player and multiplayer emit (agent-tick). */
 function canUseRoom(socket: Socket<any, any, any, SocketData>, roomCode: unknown): roomCode is string {
   if (typeof roomCode === 'string' && roomCode.startsWith('solo-')) return true;
   return isRoomMember(socket, roomCode);
@@ -240,6 +281,8 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       serverStartTime: null,
       graceTimers: new Map(),
       voiceUsers: new Set(),
+      match: null,
+      endTimer: null,
     });
     socket.data.userId = data.userId;
     socket.data.roomCode = roomCode;
@@ -332,6 +375,9 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       room: { map_id: room.mapId },
       started: room.started,
       serverStartTime: room.serverStartTime,
+      // A returning client resyncs the egg rather than trusting what it last saw.
+      egg: room.match?.owner() ?? null,
+      now: Date.now(),
     });
     socket.to(data.roomCode).emit('player-reconnected', {
       userId: data.userId,
@@ -397,19 +443,21 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     const rc = socket.data.roomCode;
     if (!rc) return;
     const room = rooms.get(rc);
-    if (!room) return;
-
-    // TODO: Enable this after mechanics testing is complete
-    // if (room.players.length < 2) {
-    //   socket.emit('error', { message: 'Need at least 2 players to start.' });
-    //   return;
-    // }
+    if (!room || room.started) return;
+    if (room.hostUserId !== socket.data.userId) {
+      socket.emit('error', { message: 'Only the host can start the match.' });
+      return;
+    }
 
     room.started = true;
     room.serverStartTime = Date.now();
-    io.to(rc).emit('game-starting', { countdown: 3 });
+    room.match = new Match(room.serverStartTime);
+    if (room.endTimer) clearTimeout(room.endTimer);
+    // A little after the buzzer, so the last claims in flight still land.
+    room.endTimer = setTimeout(() => finishMatch(rc), room.match.endAt - Date.now() + 150);
     io.to(rc).emit('game-started', {
       serverTime: room.serverStartTime,
+      now: Date.now(),
       players: publicPlayers(room),
       mapId: room.mapId,
     });
@@ -438,23 +486,23 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     });
   });
 
-  socket.on('game-state-update', (payload: any) => {
-    if (!isRoomMember(socket, payload?.roomCode)) return;
-    socket.to(payload.roomCode).emit('game-state-update', payload);
-  });
-
   socket.on('player-input', (payload: any) => {
     // Membership-gated + re-built from sanitized fields so a peer can't inject junk.
+    // The sender is whoever this socket joined as, never what the payload claims.
     if (!isRoomMember(socket, payload?.roomCode)) return;
+    const uid = socket.data.userId as string;
+    const x = cleanNum(payload.x, -1e5, 1e5);
+    const y = cleanNum(payload.y, -1e5, 1e5);
+    const isInvincible = !!payload.isInvincible;
+    rooms.get(payload.roomCode)?.match?.report(uid, x, y, isInvincible);
     socket.to(payload.roomCode).emit('player-input', {
       roomCode: payload.roomCode,
-      userId: cleanStr(payload.userId, 64),
-      x: cleanNum(payload.x, -1e5, 1e5),
-      y: cleanNum(payload.y, -1e5, 1e5),
+      userId: uid,
+      x,
+      y,
       vx: cleanNum(payload.vx, -1e5, 1e5),
       vy: cleanNum(payload.vy, -1e5, 1e5),
-      hasEgg: !!payload.hasEgg,
-      isInvincible: !!payload.isInvincible,
+      isInvincible,
     });
   });
 
@@ -463,7 +511,41 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
   // player-input — the authority is the single source of truth for bot movement.
   socket.on('agent-state', (payload: any) => {
     if (!isRoomMember(socket, payload?.roomCode)) return;
+    const match = rooms.get(payload.roomCode)?.match;
+    if (match && Array.isArray(payload.agents)) {
+      for (const a of payload.agents.slice(0, 4)) {
+        const uid = cleanStr(a?.uid, 32);
+        if (uid.startsWith('agent_')) match.report(uid, cleanNum(a.x, -1e5, 1e5), cleanNum(a.y, -1e5, 1e5), !!a.isInvincible);
+      }
+    }
     socket.to(payload.roomCode).emit('agent-state', payload);
+  });
+
+  /**
+   * "I (or a bot I steer) just reached the egg / touched its holder." The server checks
+   * the claim against the positions it has seen and, if it holds, tells the whole room
+   * the new owner with a sequence number. A rejected claimer gets the current owner
+   * back, so a client that guessed wrong corrects itself.
+   */
+  socket.on('egg-claim', (payload: any) => {
+    const rc = payload?.roomCode;
+    if (!isRoomMember(socket, rc)) return;
+    if (!rateOk(`${socket.id}:claim`, 40, 1000)) return;
+    const match = rooms.get(rc)?.match;
+    if (!match) return;
+    const claimer = cleanStr(payload.claimerId, 64);
+    // You can claim for yourself, or for a fill-bot (whoever is steering them).
+    if (claimer !== socket.data.userId && !claimer.startsWith('agent_')) return;
+    const eggX = payload.eggX == null ? null : cleanNum(payload.eggX, -1e5, 1e5);
+    const eggY = payload.eggY == null ? null : cleanNum(payload.eggY, -1e5, 1e5);
+    const accepted = match.claim(claimer, eggX, eggY);
+    if (accepted) io.to(rc).emit('egg-owner', accepted);
+    else socket.emit('egg-owner', match.owner());
+  });
+
+  /** Clock sync: clients estimate their offset from the server's clock. */
+  socket.on('time-sync', (_t0: unknown, ack?: (now: number) => void) => {
+    if (typeof ack === 'function') ack(Date.now());
   });
 
   /**
@@ -498,17 +580,6 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
   // client's timestamp straight back so the client can measure round-trip latency.
   socket.on('ping-check', (t: number) => socket.emit('pong-check', t));
 
-  // Authoritative egg ownership: whichever client made the new holder broadcasts the
-  // egg state; everyone else mirrors it (destroys/respawns the ground egg + tints).
-  socket.on('egg-state', (payload: any) => {
-    if (!isRoomMember(socket, payload?.roomCode)) return;
-    socket.to(payload.roomCode).emit('egg-state', payload);
-  });
-
-  socket.on('game-finished', (payload: any) => {
-    if (!canUseRoom(socket, payload?.roomCode)) return;
-    io.to(payload.roomCode).emit('game-finished', payload);
-  });
 
   // --- Proximity voice chat: WebRTC signalling relay (room-scoped) ---
   socket.on('voice-join', ({ roomCode, userId }: { roomCode: string; userId: string }) => {
@@ -556,17 +627,8 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     if (!room) return;
     const t = room.graceTimers.get(uid);
     if (t) { clearTimeout(t); room.graceTimers.delete(uid); }
-    room.players = room.players.filter((p) => p.user_id !== uid);
-    if (room.players.length === 0) {
-      rooms.delete(rc);
-      forgetRoom(rc);
-    } else {
-      io.to(rc).emit('player-left', {
-        userId: uid,
-        players: publicPlayers(room),
-        currentPlayers: room.players.length,
-      });
-    }
+    room.voiceUsers.delete(uid);
+    removePlayer(rc, room, uid);
   });
 
   socket.on('disconnect', () => {
@@ -596,16 +658,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
         room.graceTimers.delete(uid);
         const stillGone = room.players.find((p) => p.user_id === uid);
         if (!stillGone || stillGone.connected) return;
-        room.players = room.players.filter((p) => p.user_id !== uid);
-        if (room.players.length === 0) {
-          rooms.delete(rc);
-        } else {
-          io.to(rc).emit('player-left', {
-            userId: uid,
-            players: publicPlayers(room),
-            currentPlayers: room.players.length,
-          });
-        }
+        removePlayer(rc, room, uid);
       }, RECONNECT_GRACE_MS),
     );
   });

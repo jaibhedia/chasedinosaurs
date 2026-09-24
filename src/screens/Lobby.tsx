@@ -7,7 +7,6 @@ import { useGameStore } from '@/store/gameStore';
 import { useSocket, type LobbyPlayer } from '@/providers/SocketProvider';
 import { characters } from '@/data/characters';
 import { gameMaps } from '@/data/maps';
-import { saveMatchConfig } from '@/lib/matchConfig';
 import { usePageTitle } from '@/hooks/usePageTitle';
 
 interface PublicRoom {
@@ -26,8 +25,8 @@ export default function Lobby() {
   usePageTitle('Multiplayer lobby');
 
   const {
-    selectedCharacter, setCharacter, setMap, setGameMode, setServerStartTime, setRoomPlayers,
-    setRoomCode: setStoreRoomCode, userId: storeUserId, initUserId, resetMatch,
+    selectedCharacter, setCharacter, setGameMode,
+    setRoomCode: setStoreRoomCode, userId: storeUserId, initUserId, roomCode: storeRoomCode,
   } = useGameStore();
   const { socket, ensureConnected, createRoom, joinRoom, setPlayerReady, chooseCharacter, startGame, leaveRoom } = useSocket();
 
@@ -35,13 +34,13 @@ export default function Lobby() {
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [isInRoom, setIsInRoom] = useState(false);
-  const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState('');
   const [isPublic, setIsPublic] = useState(true);
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
   const [charNotice, setCharNotice] = useState('');
   const [copied, setCopied] = useState(false);
   const autoJoinTried = useRef(false);
+  const rejoinTried = useRef(false);
 
   const userId = storeUserId || initUserId();
 
@@ -66,15 +65,6 @@ export default function Lobby() {
     };
     const onPublicRooms = (rooms: PublicRoom[]) => setPublicRooms(Array.isArray(rooms) ? rooms : []);
     const onCharTaken = () => setCharNotice('That dino was just taken. Pick another.');
-    const onStarted = ({ serverTime, players: roster, mapId }: { serverTime: number; players: LobbyPlayer[]; mapId: string }) => {
-      resetMatch();
-      setServerStartTime(serverTime);
-      setRoomPlayers(roster || []);
-      setMap(gameMaps.find((m) => m.id === mapId) || gameMaps[0]);
-      saveMatchConfig();
-      try { localStorage.removeItem('chase-game-snapshot'); } catch { /* fresh match */ }
-      navigate('/game');
-    };
 
     socket.on('player-joined', onRoster);
     socket.on('player-left', onRoster);
@@ -85,7 +75,6 @@ export default function Lobby() {
     socket.on('room-state-response', onRoomState);
     socket.on('public-rooms-list', onPublicRooms);
     socket.on('character-taken', onCharTaken);
-    socket.on('game-started', onStarted);
     return () => {
       socket.off('player-joined', onRoster);
       socket.off('player-left', onRoster);
@@ -96,9 +85,8 @@ export default function Lobby() {
       socket.off('room-state-response', onRoomState);
       socket.off('public-rooms-list', onPublicRooms);
       socket.off('character-taken', onCharTaken);
-      socket.off('game-started', onStarted);
     };
-  }, [socket, navigate, resetMatch, setServerStartTime, setRoomPlayers, setMap]);
+  }, [socket]);
 
   // The server may auto-resolve a duplicate pick on join; mirror its choice locally,
   // since the scene reads the local player's sprite from the store.
@@ -122,13 +110,36 @@ export default function Lobby() {
     return () => clearInterval(t);
   }, [socket, isInRoom, roomCode]);
 
-  const enterRoom = (code: string, list: LobbyPlayer[], host: boolean) => {
+  const enterRoom = (code: string, list: LobbyPlayer[]) => {
     setRoomCode(code);
     setStoreRoomCode(code);
     setPlayers(list ?? []);
-    setIsHost(host);
     setIsInRoom(true);
   };
+
+  // Coming back from a match: the room is still ours, so go straight to its waiting room.
+  useEffect(() => {
+    if (!socket || !storeRoomCode || rejoinTried.current || params.code) return;
+    rejoinTried.current = true;
+    const code = storeRoomCode;
+    const onRejoined = (res: { roomCode: string; players: LobbyPlayer[]; started: boolean }) => {
+      socket.off('rejoin-failed', onFailed);
+      if (res.started) return; // a match is running; the play screen handles that
+      enterRoom(res.roomCode, res.players);
+    };
+    const onFailed = () => {
+      socket.off('room-rejoined', onRejoined);
+      setStoreRoomCode(null);
+    };
+    socket.once('room-rejoined', onRejoined);
+    socket.once('rejoin-failed', onFailed);
+    socket.emit('rejoin-room', { roomCode: code, userId });
+    return () => {
+      socket.off('room-rejoined', onRejoined);
+      socket.off('rejoin-failed', onFailed);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, storeRoomCode]);
 
   const handleCreate = async () => {
     const character = selectedCharacter ?? characters[0];
@@ -147,7 +158,7 @@ export default function Lobby() {
         playerName: character.name,
         isPublic,
       });
-      enterRoom(res.roomCode, res.players, true);
+      enterRoom(res.roomCode, res.players);
     } catch (err) {
       setError((err as Error).message || 'Could not create a room.');
     } finally {
@@ -168,7 +179,7 @@ export default function Lobby() {
     }
     try {
       const res = await joinRoom({ roomCode: code, userId, characterId: charNum(character), playerName: character.name });
-      enterRoom(res.roomCode ?? code, res.players, false);
+      enterRoom(res.roomCode ?? code, res.players);
     } catch (err) {
       const msg = (err as Error).message;
       setStoreRoomCode(null);
@@ -196,7 +207,6 @@ export default function Lobby() {
   const leave = () => {
     leaveRoom();
     setIsInRoom(false);
-    setIsHost(false);
     setPlayers([]);
     setStoreRoomCode(null);
     setRoomCode('');
@@ -213,6 +223,8 @@ export default function Lobby() {
   };
 
   const me = players.find((p) => p.user_id === userId);
+  // The server names the host, and hands the role on if the host leaves.
+  const isHost = !!me?.host;
   const isReady = !!me?.is_ready;
   const allReady = players.length > 0 && players.every((p) => p.is_ready);
   const canStart = players.length >= MIN_PLAYERS && allReady;

@@ -3,7 +3,7 @@ import { useGameStore, Player, GameObject, AgentIntent, MinimapDot } from '@/sto
 import { characters } from '@/data/characters';
 import { audioManager } from '@/utils/audioManager';
 import { PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, GAME_DURATION, checkCollision, findCollider, findSafeSpawnPosition } from './gameShared';
-import { getGameSocket } from '@/lib/socketBridge';
+import { getGameSocket, getServerOffset } from '@/lib/socketBridge';
 import { TUNING, PERSONAS, PERSONA_SPEED, assignRoles, ramp, type BotTuning, type Role } from './botTactics';
 import type { Difficulty } from '@/store/gameStore';
 
@@ -132,7 +132,15 @@ export class GameScene extends Phaser.Scene {
    *  extrapolation — lets remote players glide smoothly between packets. */
   private remoteNet: Record<string, { x: number; y: number; vx: number; vy: number; t: number }> = {};
   private onRemoteInput?: (payload: any) => void;
-  private onEggState?: (payload: any) => void;
+  private onEggOwner?: (payload: any) => void;
+  private onMatchResult?: (payload: any) => void;
+  private onRoomRejoined?: (payload: any) => void;
+  /** Highest egg-owner sequence applied; older updates are ignored. */
+  private eggSeq = 0;
+  /** Last claim sent per claimer, to throttle claims while touching. */
+  private lastClaimAt: Record<string, number> = {};
+  /** Online: our clock hit zero and we're waiting for the server's result. */
+  private resultFallback?: Phaser.Time.TimerEvent;
   /** Online-MP agent-fill: this client is the single authority that STEERS the
    *  fill-agents and broadcasts their state. Computed deterministically (smallest
    *  human user_id) so every client agrees on exactly one driver — no double spend,
@@ -196,8 +204,10 @@ export class GameScene extends Phaser.Scene {
   private pausedAt: number | null = null;
   /** Last whole second of the clock we snapshotted on. */
   private lastClockSec = -1;
-  /** Guards endGame() against being fired twice once the server clock hits zero. */
+  /** The clock hit zero: the simulation stops. */
   private matchEnded = false;
+  /** endGame() ran; guards against a late server result firing it again. */
+  private gameOver = false;
 
   private playerSprites: { [id: string]: Phaser.GameObjects.Container } = {};
   private objSprites: { [id: string]: Phaser.GameObjects.Container } = {};
@@ -349,7 +359,7 @@ export class GameScene extends Phaser.Scene {
     let startCountdown = 3;
     let startTimer = GAME_DURATION;
     if (this.gameMode === 'multiplayer' && this.serverStartTime) {
-      const elapsed = Math.floor((Date.now() - this.serverStartTime) / 1000);
+      const elapsed = Math.floor((Date.now() + getServerOffset() - this.serverStartTime) / 1000);
       const afterCountdown = elapsed - 3; // 3s pre-game countdown
       if (afterCountdown >= 0) {
         startPhase = 'playing';
@@ -362,8 +372,14 @@ export class GameScene extends Phaser.Scene {
     this.currentPhase = startPhase;
     this.countdownTimer = startCountdown;
     this.gameTimer = startTimer;
-    this.clockStart = this.gameMode === 'multiplayer' && this.serverStartTime ? this.serverStartTime : Date.now();
+    this.clockStart = this.gameMode === 'multiplayer' && this.serverStartTime
+      ? this.serverStartTime - getServerOffset()
+      : Date.now();
     this.pausedAt = null;
+    this.matchEnded = false;
+    this.gameOver = false;
+    this.eggSeq = 0;
+    this.lastClaimAt = {};
     setGamePhase(startPhase);
     setCountdownTimer(startCountdown);
     setTimeRemaining(startTimer);
@@ -664,6 +680,9 @@ export class GameScene extends Phaser.Scene {
     // frozen world stays visible behind the overlay.
     if (!store.paused) {
       if (this.currentPhase === 'playing') {
+        // Time with the egg, for the results table. Online the server's tally replaces it.
+        const holding = this.gsPlayers.find((p) => p.hasEgg);
+        if (holding) holding.eggHeldMs = (holding.eggHeldMs ?? 0) + Math.min(delta, 250);
         this.updateMovement(dt);
         this.updateBots(dt);
         this.updateTagging();
@@ -760,7 +779,8 @@ export class GameScene extends Phaser.Scene {
         spr.y = -12 + bob;
       }
 
-      sprite.setAlpha(p.isInvincible ? (p.id === 'player' ? 0.35 : 0) : 1);
+      // Shielded dinos go see-through, not invisible, so you can still track them.
+      sprite.setAlpha(p.isInvincible ? 0.5 : 1);
     });
 
     this.cullProps();
@@ -1916,16 +1936,25 @@ export class GameScene extends Phaser.Scene {
         // React on every 30Hz packet (the choppiness/lag the non-host client suffered).
         const gp = this.gsPlayers.find((p) => p.id === id);
         if (gp) { gp.x = payload.x; gp.y = payload.y; }
-        // Only DISCRETE state (egg/shield) goes to the store/React, and only on change.
-        this.applyRemoteFlags(id, gp, payload.hasEgg, payload.isInvincible);
+        // Only the shield flag goes to the store/React, and only on change. Egg ownership
+        // comes from the server (egg-owner), never from a peer's report.
+        this.applyRemoteFlags(id, gp, payload.isInvincible);
       };
       socket.on('player-input', this.onRemoteInput);
-      // Egg ownership broadcast by whichever client became the new holder.
-      this.onEggState = (payload: any) => {
+      // Egg ownership, decided by the server.
+      this.onEggOwner = (payload: any) => this.applyEggOwner(payload);
+      socket.on('egg-owner', this.onEggOwner);
+      // The server's verdict at the buzzer.
+      this.onMatchResult = (payload: any) => {
         if (!payload) return;
-        this.applyEggState(payload.ownerUserId ?? null, payload.x ?? 0, payload.y ?? 0);
+        this.matchEnded = true;
+        this.resultFallback?.remove(false);
+        this.endGame(payload);
       };
-      socket.on('egg-state', this.onEggState);
+      socket.on('match-result', this.onMatchResult);
+      // After a reconnect, resync the egg rather than trusting what we last saw.
+      this.onRoomRejoined = (payload: any) => { if (payload?.egg) this.applyEggOwner(payload.egg); };
+      socket.on('room-rejoined', this.onRoomRejoined);
       // Fill-agent positions, broadcast by the authority. Non-authority clients apply
       // them to the matching 'bot-<i>' (same dead-reckoning path as remote humans).
       this.onAgentState = (payload: any) => {
@@ -1960,16 +1989,20 @@ export class GameScene extends Phaser.Scene {
           // Same as remote humans: position straight to the scene, store only on flag change.
           const gp = this.gsPlayers.find((p) => p.id === a.id);
           if (gp) { gp.x = a.x; gp.y = a.y; }
-          this.applyRemoteFlags(a.id, gp, a.hasEgg, a.isInvincible);
+          this.applyRemoteFlags(a.id, gp, a.isInvincible);
         }
       };
       socket.on('agent-state', this.onAgentState);
       this.events.once('shutdown', () => {
         if (this.onRemoteInput) socket.off('player-input', this.onRemoteInput);
-        if (this.onEggState) socket.off('egg-state', this.onEggState);
+        if (this.onEggOwner) socket.off('egg-owner', this.onEggOwner);
+        if (this.onMatchResult) socket.off('match-result', this.onMatchResult);
+        if (this.onRoomRejoined) socket.off('room-rejoined', this.onRoomRejoined);
         if (this.onAgentState) socket.off('agent-state', this.onAgentState);
         this.onRemoteInput = undefined;
-        this.onEggState = undefined;
+        this.onEggOwner = undefined;
+        this.onMatchResult = undefined;
+        this.onRoomRejoined = undefined;
         this.onAgentState = undefined;
         this.netBound = false;
       });
@@ -1988,6 +2021,7 @@ export class GameScene extends Phaser.Scene {
           from: this.localUserId,
           agents: bots.map((b) => ({
             id: b.id,
+            uid: b.userId,
             x: Math.round(b.x),
             y: Math.round(b.y),
             hasEgg: !!b.hasEgg,
@@ -2043,13 +2077,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Push only DISCRETE remote state (egg/shield) to the store → React, and only when it
-   * actually flips. Positions never come through here (see onRemoteInput/onAgentState),
-   * so a remote player moving no longer re-renders the React tree 30×/sec.
+   * Push a remote player's shield flag to the store → React, only when it flips.
+   * Positions never come through here (see onRemoteInput/onAgentState), so a remote
+   * player moving doesn't re-render the React tree 30×/sec.
    */
-  private applyRemoteFlags(id: string, gp: Player | undefined, hasEgg: unknown, isInvincible: unknown) {
+  private applyRemoteFlags(id: string, gp: Player | undefined, isInvincible: unknown) {
     const patch: Partial<Player> = {};
-    if (typeof hasEgg === 'boolean' && gp && gp.hasEgg !== hasEgg) patch.hasEgg = hasEgg;
     if (typeof isInvincible === 'boolean' && gp && gp.isInvincible !== isInvincible) patch.isInvincible = isInvincible;
     if (Object.keys(patch).length === 0) return;
     Object.assign(gp as Player, patch);
@@ -2062,6 +2095,9 @@ export class GameScene extends Phaser.Scene {
    * Layout: first 3s = countdown, then GAME_DURATION seconds of play.
    */
   private advanceClock(store: ReturnType<typeof useGameStore.getState>) {
+    // Online, re-derive from the server's start time each frame so a refined clock
+    // offset takes effect immediately.
+    if (this.isOnlineMp && this.serverStartTime) this.clockStart = this.serverStartTime - getServerOffset();
     const elapsed = (Date.now() - this.clockStart) / 1000;
 
     // Snapshot ~once per second for refresh-resume (mirrors the single-player path).
@@ -2087,16 +2123,49 @@ export class GameScene extends Phaser.Scene {
     if (remaining !== this.gameTimer) { this.gameTimer = remaining; store.setTimeRemaining(remaining); }
     if (remaining <= 0 && !this.matchEnded) {
       this.matchEnded = true;
-      this.endGame();
+      if (this.isOnlineMp) {
+        // The server decides who won. Its result normally lands within a few hundred
+        // ms; if the connection is gone, fall back to what this client saw.
+        this.resultFallback = this.time.delayedCall(3000, () => this.endGame());
+      } else {
+        this.endGame();
+      }
     }
   }
 
-  /** Tell every other client in the room who now holds the egg (or where it dropped),
-   *  so they hide/show the ground egg and retint players identically. */
-  private broadcastEggState(ownerUserId: string | null, x = 0, y = 0) {
+  /**
+   * Ask the server to give the egg to `claimerId` (us, or a bot we steer). Nothing
+   * changes locally until the server answers with egg-owner, so every client applies the
+   * same handoffs in the same order. Throttled per claimer while contact lasts.
+   */
+  private claimEgg(claimerId: string | undefined) {
     const socket = getGameSocket();
-    if (!socket || !this.roomCode) return;
-    socket.emit('egg-state', { roomCode: this.roomCode, ownerUserId, x, y });
+    if (!socket || !this.roomCode || !claimerId) return;
+    const now = Date.now();
+    if (now - (this.lastClaimAt[claimerId] ?? 0) < 150) return;
+    this.lastClaimAt[claimerId] = now;
+    const egg = useGameStore.getState().eggPosition;
+    socket.emit('egg-claim', {
+      roomCode: this.roomCode,
+      claimerId,
+      eggX: egg ? Math.round(egg.x) : null,
+      eggY: egg ? Math.round(egg.y) : null,
+    });
+  }
+
+  /** Apply the server's egg-owner update, ignoring anything older than what we have. */
+  private applyEggOwner(payload: any) {
+    if (!payload || typeof payload.seq !== 'number' || payload.seq <= this.eggSeq) return;
+    this.eggSeq = payload.seq;
+    if (!payload.ownerUserId) return; // still on the ground; nothing to change
+    const hadEgg = this.gsPlayers.find((p) => p.hasEgg);
+    this.applyEggState(payload.ownerUserId, 0, 0);
+    // Grace runs on the server's clock; translate it to ours.
+    if (typeof payload.graceUntil === 'number') {
+      this.eggGraceUntil = payload.graceUntil - getServerOffset();
+    }
+    this.lastTagTime = Date.now();
+    if (hadEgg?.userId !== payload.ownerUserId) audioManager.play('tag');
   }
 
   /** Apply a networked egg-ownership change: retint the holder, clear everyone else,
@@ -2774,119 +2843,33 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Online-multiplayer egg authority. Only the LOCAL player ('player') can become the
-   * new holder, and that transition is broadcast so every client mirrors it (hides the
-   * ground egg + retints). When I'm the holder I do nothing — I wait for the taker's
-   * client to claim it — which keeps exactly ONE client initiating each handoff.
+   * Online egg handling. Clients never hand the egg over themselves: when we see contact
+   * (us with the ground egg or its holder, or, on the bot-steering client, a bot with
+   * either) we claim it, and the server's egg-owner broadcast makes the change on every
+   * screen at once. See server/src/match.ts.
    */
   private updateTaggingMp() {
     const store = useGameStore.getState();
     const now = Date.now();
     const tagDist = Math.max(TAG_DISTANCE, PLAYER_SIZE * 2.2);
-    // Authority also drives the fill-agents' egg interactions (run first; the shared
-    // grace/cooldown timers then gate the human flow this frame so the egg can't be
-    // double-claimed). Other clients just mirror the broadcast.
-    if (this.agentAuthority) this.updateBotTaggingMp(store, now, tagDist);
+    const holder = this.gsPlayers.find((p) => p.hasEgg);
+    const eggPos = holder ? null : store.eggPosition;
+    const canSteal = now >= this.eggGraceUntil && now - this.lastTagTime >= TAG_COOLDOWN;
+
+    const tryClaim = (p: Player) => {
+      if (p.isInvincible || p.hasEgg) return;
+      if (eggPos) {
+        if (Math.hypot(p.x - eggPos.x, p.y - eggPos.y) <= tagDist) this.claimEgg(p.id === 'player' ? this.localUserId : p.userId);
+        return;
+      }
+      if (!holder || holder.isInvincible || !canSteal) return;
+      if (Math.hypot(holder.x - p.x, holder.y - p.y) <= tagDist) this.claimEgg(p.id === 'player' ? this.localUserId : p.userId);
+    };
+
     const me = this.gsPlayers.find((p) => p.id === 'player');
-    if (!me || me.isInvincible) return;
-
-    // PICKUP — ground egg, and I'm the one reaching it.
-    if (!this.gsPlayers.some((p) => p.hasEgg)) {
-      const eggPos = store.eggPosition;
-      if (eggPos && Math.hypot(me.x - eggPos.x, me.y - eggPos.y) <= tagDist) {
-        me.hasEgg = true;
-        me.eggHoldCount = (me.eggHoldCount || 0) + 1;
-        store.updatePlayer('player', { hasEgg: true, eggHoldCount: me.eggHoldCount });
-        store.setEgg('player', null);
-        store.setLastEggHolderId('player');
-        this.destroyWorldEgg();
-        this.lastTagTime = now;
-        this.eggGraceUntil = now + EGG_GRACE_MS;
-        this.rebuildPlayerSprite(me);
-        audioManager.play('tag');
-        this.broadcastEggState(this.localUserId ?? null);
-      }
-      return;
-    }
-
-    // TRANSFER — I don't hold it; steal from whoever does on contact. (If I'm the
-    // holder, bail — the other client initiates the steal and broadcasts it.)
-    if (me.hasEgg) return;
-    if (now < this.eggGraceUntil || now - this.lastTagTime < TAG_COOLDOWN) return;
-    const holder = this.gsPlayers.find((p) => p.hasEgg);
-    if (!holder || holder.isInvincible) return;
-    if (Math.hypot(holder.x - me.x, holder.y - me.y) > tagDist) return;
-
-    holder.hasEgg = false;
-    me.hasEgg = true;
-    me.eggHoldCount = (me.eggHoldCount || 0) + 1;
-    store.updatePlayer(holder.id, { hasEgg: false });
-    store.updatePlayer('player', { hasEgg: true, eggHoldCount: me.eggHoldCount });
-    store.setEgg('player', null);
-    store.setLastEggHolderId('player');
-    this.lastTagTime = now;
-    this.eggGraceUntil = now + EGG_GRACE_MS;
-    this.rebuildPlayerSprite(holder);
-    this.rebuildPlayerSprite(me);
-    audioManager.play('tag');
-    this.broadcastEggState(this.localUserId ?? null);
-  }
-
-  /**
-   * Online-MP egg authority for the fill-agents (authority client only). Mirrors the
-   * human egg flow, but per bot: a bot grabs the loose egg or steals from a HUMAN
-   * holder on contact, and we broadcast the new ownership keyed by the bot's userId so
-   * every client mirrors it. Bots never steal from each other (no pointless churn); the
-   * shared grace/cooldown timers stop the egg ping-ponging between the two flows.
-   */
-  private updateBotTaggingMp(store: ReturnType<typeof useGameStore.getState>, now: number, tagDist: number) {
-    const bots = this.gsPlayers.filter((p) => p.isBot && !p.isInvincible);
-    if (bots.length === 0) return;
-
-    // PICKUP — loose egg; first of my bots within range grabs it.
-    if (!this.gsPlayers.some((p) => p.hasEgg)) {
-      const eggPos = store.eggPosition;
-      if (!eggPos) return;
-      for (const bot of bots) {
-        if (Math.hypot(bot.x - eggPos.x, bot.y - eggPos.y) <= tagDist) {
-          bot.hasEgg = true;
-          bot.eggHoldCount = (bot.eggHoldCount || 0) + 1;
-          store.updatePlayer(bot.id, { hasEgg: true, eggHoldCount: bot.eggHoldCount });
-          store.setEgg(bot.id, null);
-          store.setLastEggHolderId(bot.id);
-          this.destroyWorldEgg();
-          this.lastTagTime = now;
-          this.eggGraceUntil = now + EGG_GRACE_MS;
-          this.rebuildPlayerSprite(bot);
-          audioManager.play('tag');
-          this.broadcastEggState(bot.userId ?? null);
-          return;
-        }
-      }
-      return;
-    }
-
-    // TRANSFER — a HUMAN holds it; a bot of mine steals on contact.
-    if (now < this.eggGraceUntil || now - this.lastTagTime < TAG_COOLDOWN) return;
-    const holder = this.gsPlayers.find((p) => p.hasEgg);
-    if (!holder || holder.isInvincible || holder.isBot) return;
-    for (const bot of bots) {
-      if (Math.hypot(holder.x - bot.x, holder.y - bot.y) > tagDist) continue;
-      holder.hasEgg = false;
-      bot.hasEgg = true;
-      bot.eggHoldCount = (bot.eggHoldCount || 0) + 1;
-      store.updatePlayer(holder.id, { hasEgg: false });
-      store.updatePlayer(bot.id, { hasEgg: true, eggHoldCount: bot.eggHoldCount });
-      store.setEgg(bot.id, null);
-      store.setLastEggHolderId(bot.id);
-      this.lastTagTime = now;
-      this.eggGraceUntil = now + EGG_GRACE_MS;
-      this.rebuildPlayerSprite(holder);
-      this.rebuildPlayerSprite(bot);
-      audioManager.play('tag');
-      this.broadcastEggState(bot.userId ?? null);
-      return;
-    }
+    if (me) tryClaim(me);
+    // The bot-steering client claims for the bots.
+    if (this.agentAuthority) for (const b of this.gsPlayers) if (b.isBot) tryClaim(b);
   }
 
   private updateTagging() {
@@ -3335,21 +3318,45 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private endGame() {
+  private endGame(result?: { winnerUserId: string | null; stats?: Array<{ userId: string; grabs: number; heldMs: number }> }) {
+    if (this.gameOver) return;
+    this.gameOver = true;
+    this.matchEnded = true;
     const store = useGameStore.getState();
     audioManager.stopTheme();
     audioManager.stopRunning();
     this.clearSnapshot(); // match over — don't resume it on a later refresh
-    // Last Egg Holder Wins (or default to 0 if nobody ever held it)
-    const lastHolderId = useGameStore.getState().lastEggHolderId;
-    const currentHolder = this.gsPlayers.find(p => p.hasEgg);
-    const winner = currentHolder || this.gsPlayers.find(p => p.id === lastHolderId) || this.gsPlayers[0];
 
+    let winner: Player | null;
+    if (result) {
+      // Online: the server's tally and verdict, so every screen agrees.
+      for (const st of result.stats ?? []) {
+        const p = this.playerByUserId(st.userId);
+        if (p) { p.eggHoldCount = st.grabs; p.eggHeldMs = st.heldMs; }
+      }
+      winner = result.winnerUserId ? this.playerByUserId(result.winnerUserId) ?? null : null;
+    } else {
+      // Last egg holder wins.
+      const lastHolderId = store.lastEggHolderId;
+      winner = this.gsPlayers.find((p) => p.hasEgg) ?? this.gsPlayers.find((p) => p.id === lastHolderId) ?? null;
+    }
+
+    store.setPlayers(this.gsPlayers.map((p) => ({ ...p })));
+    if (!winner) {
+      store.setGameResult(null, 'Nobody grabbed the egg!');
+      return;
+    }
     const grabs = winner.eggHoldCount ?? 0;
-    const isLocalWinner = winner.userId === store.userId || winner.id === 'player';
+    const isLocalWinner = winner.id === 'player';
     const msg = isLocalWinner
-      ? `🥚 You held the egg at the end! (${grabs} steals)`
-      : `🥚 ${winner.character.name} held the egg at the end! (${grabs} steals)`;
+      ? `🥚 You held the egg at the end! (${grabs} ${grabs === 1 ? 'grab' : 'grabs'})`
+      : `🥚 ${winner.character.name} held the egg at the end! (${grabs} ${grabs === 1 ? 'grab' : 'grabs'})`;
     store.setGameResult(winner, msg);
   }
+
+  private playerByUserId(userId: string): Player | undefined {
+    if (userId === this.localUserId) return this.gsPlayers.find((p) => p.id === 'player');
+    return this.gsPlayers.find((p) => p.userId === userId);
+  }
+
 }

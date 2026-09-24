@@ -20,15 +20,16 @@ export default function Results() {
   const playerWon = winner?.id === 'player';
   usePageTitle(playerWon ? 'Victory' : 'Results');
 
+  // No match to show (e.g. a refresh on /results): back to the start.
   useEffect(() => {
-    if (!winner) navigate('/', { replace: true });
-  }, [winner, navigate]);
+    if (players.length === 0) navigate('/', { replace: true });
+  }, [players.length, navigate]);
 
   useEffect(() => {
-    if (!winner || playedSound.current) return;
+    if (players.length === 0 || playedSound.current) return;
     playedSound.current = true;
     audioManager.play(playerWon ? 'victory' : 'defeat');
-  }, [winner, playerWon]);
+  }, [players.length, playerWon]);
 
   // The winner is #1 by definition; everyone else by how often they got the egg.
   const ranked = useMemo(
@@ -63,14 +64,13 @@ export default function Results() {
     try { localStorage.removeItem('chase-game-snapshot'); } catch { /* fresh match */ }
     navigate('/game', { replace: true });
   };
-  // The finished room is left behind; the lobby starts fresh.
   const leaveFinishedRoom = () => {
     if (!online) return;
     leaveRoom();
     setRoomCode(null);
   };
+  // The room stays open after a match; this goes back to its waiting room.
   const toLobby = () => {
-    leaveFinishedRoom();
     resetMatch();
     clearMatchConfig();
     navigate('/lobby', { replace: true });
@@ -87,7 +87,9 @@ export default function Results() {
     navigate('/', { replace: true });
   };
 
-  if (!winner) return null;
+  if (players.length === 0) return null;
+  const title = !winner ? 'No winner' : playerWon ? 'Victory!' : 'Defeated!';
+  const tone = playerWon ? '#ffc93c' : '#e8503a';
 
   return (
     <main className="h-[100dvh] w-full flex flex-col overflow-y-auto px-solid-bg p-3 md:p-4 relative">
@@ -117,15 +119,15 @@ export default function Results() {
             )}
           </motion.div>
 
-          <h1 className="text-xl md:text-4xl short:text-lg uppercase tracking-wider title-pixel" style={{ color: playerWon ? '#ffc93c' : '#e8503a' }} data-testid="results-title">
-            {playerWon ? 'Victory!' : 'Defeated!'}
+          <h1 className="text-xl md:text-4xl short:text-lg uppercase tracking-wider title-pixel" style={{ color: tone }} data-testid="results-title">
+            {title}
           </h1>
 
-          <div className="pixel-panel p-2 md:p-4 short:p-1.5" style={{ borderColor: playerWon ? '#ffc93c' : '#e8503a' }}>
+          <div className="pixel-panel p-2 md:p-4 short:p-1.5" style={{ borderColor: tone }}>
             <div className="flex items-center justify-center gap-2">
               <Crown className="w-4 h-4 md:w-6 md:h-6 text-yellow-400 shrink-0" />
               <h2 className="text-sm md:text-2xl short:text-sm font-black text-white uppercase" data-testid="results-winner">
-                {winner.character.name} wins
+                {winner ? `${winner.character.name} wins` : 'Nobody grabbed the egg'}
               </h2>
               <Crown className="w-4 h-4 md:w-6 md:h-6 text-yellow-400 shrink-0" />
             </div>
@@ -135,7 +137,7 @@ export default function Results() {
           <div className="flex flex-wrap gap-2 md:gap-3 justify-center">
             {online ? (
               <Button onClick={toLobby} size="lg" className="gap-2" data-testid="results-lobby">
-                <Users className="w-5 h-5" /> Back to lobby
+                <Users className="w-5 h-5" /> Back to room
               </Button>
             ) : (
               <>
@@ -175,8 +177,12 @@ export default function Results() {
                   <p className="text-[10px] md:text-xs text-gray-300 uppercase leading-none">Grabs</p>
                   <p className="text-base md:text-2xl short:text-base font-black text-amber-300 leading-tight">{p.eggHoldCount ?? 0}</p>
                 </div>
+                <div className="text-center">
+                  <p className="text-[10px] md:text-xs text-gray-300 uppercase leading-none">Held</p>
+                  <p className="text-base md:text-2xl short:text-base font-black text-amber-300 leading-tight">{Math.round((p.eggHeldMs ?? 0) / 1000)}s</p>
+                </div>
                 <p className="hidden lg:block text-sm font-black uppercase text-[#f4e7c3] min-w-[90px] text-right">
-                  {p.id === winner.id ? (
+                  {p.id === winner?.id ? (
                     <span className="inline-flex items-center gap-1 text-[#ffc93c]"><Trophy className="w-4 h-4" /> Winner</span>
                   ) : (p.eggHoldCount ?? 0) >= 3 ? (
                     <span className="inline-flex items-center gap-1"><Star className="w-4 h-4" /> Thief</span>

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useGameStore } from '@/store/gameStore';
-import { setGameSocket } from '@/lib/socketBridge';
+import { setGameSocket, recordTimeSample, resetTimeSync } from '@/lib/socketBridge';
 import { resolveSocketUrl } from '@/config';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
@@ -14,6 +14,8 @@ export interface LobbyPlayer {
   character_id: number;
   connected: boolean;
   socket_id: string;
+  /** The player who can start the match. */
+  host?: boolean;
 }
 
 export interface RoomResponse {
@@ -87,8 +89,23 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // A handful of quick round trips to learn how far this device's clock is from the
+    // server's; the scene reads the offset for the match clock.
+    const syncClock = () => {
+      resetTimeSync();
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+          const sentAt = Date.now();
+          socket.timeout(3000).emit('time-sync', sentAt, (err: unknown, serverNow: number) => {
+            if (!err && typeof serverNow === 'number') recordTimeSample(sentAt, serverNow, Date.now());
+          });
+        }, i * 150);
+      }
+    };
+
     socket.on('connect', () => {
       setConnectionStatus('connected');
+      syncClock();
       rejoinIfNeeded();
     });
     socket.io.on('reconnect_attempt', () => setConnectionStatus('reconnecting'));

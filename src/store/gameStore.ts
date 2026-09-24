@@ -61,6 +61,8 @@ export interface Player {
   isBot: boolean;
   hasEgg: boolean;
   eggHoldCount: number;
+  /** Total time this player has held the egg this match (ms). */
+  eggHeldMs?: number;
   userId?: string;
   targetX?: number;
   targetY?: number;

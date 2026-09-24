@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { SocketProvider } from '@/providers/SocketProvider';
 import LandscapePrompt from '@/components/LandscapePrompt';
+import { RoomWatcher } from '@/components/RoomWatcher';
 import { audioManager } from '@/utils/audioManager';
 import Home from '@/screens/Home';
 import ModeSelect from '@/screens/ModeSelect';
@@ -25,6 +26,7 @@ export default function App() {
 
   return (
     <SocketProvider>
+      <RoomWatcher />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/play" element={<ModeSelect />} />
