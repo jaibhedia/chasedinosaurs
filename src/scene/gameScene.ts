@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { useGameStore, Player, GameObject, AgentIntent, MinimapDot } from '@/store/gameStore';
 import { characters } from '@/data/characters';
 import { audioManager } from '@/utils/audioManager';
-import { PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, GAME_DURATION, checkCollision, createMapObjects, findSafeSpawnPosition } from './gameShared';
+import { PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, GAME_DURATION, checkCollision, findCollider, findSafeSpawnPosition } from './gameShared';
 import { getGameSocket } from '@/lib/socketBridge';
 
 const CHAR_SPRITES: Record<string, { name: string }> = {
@@ -199,6 +199,14 @@ export class GameScene extends Phaser.Scene {
 
   private playerSprites: { [id: string]: Phaser.GameObjects.Container } = {};
   private objSprites: { [id: string]: Phaser.GameObjects.Container } = {};
+  /**
+   * Static art (props and ground decals) with its world bounds, for view culling.
+   * Phaser draws every visible object each frame whether or not it's on screen, and the
+   * arena has ~4,400 props, most of them hedge. Hiding what's outside the camera is the
+   * difference between redrawing ~9,000 objects a frame and a few hundred.
+   */
+  private cullables: Array<{ obj: Phaser.GameObjects.Components.Visible; x0: number; y0: number; x1: number; y1: number; on: boolean }> = [];
+  private lastCullView = { x: NaN, y: NaN, w: 0, h: 0 };
   /** Egg-on-the-ground visual; null while a player is carrying it. */
   private eggSprite: Phaser.GameObjects.Container | null = null;
   /** Edge-of-screen pointer toward the egg while it's off-camera. Created lazily. */
@@ -304,6 +312,8 @@ export class GameScene extends Phaser.Scene {
     if (!selectedCharacter) return;
 
     this.gameStartTime = this.serverStartTime || Date.now();
+    this.cullables = [];
+    this.lastCullView = { x: NaN, y: NaN, w: 0, h: 0 };
     this.botStuckAccum = {};
     this.tagBackBlock = null;
     this.lastTagTime = 0;
@@ -728,15 +738,27 @@ export class GameScene extends Phaser.Scene {
       sprite.setAlpha(p.isInvincible ? (p.id === 'player' ? 0.35 : 0) : 1);
     });
 
-    this.gsObjects.forEach(obj => {
-      const spr = this.objSprites[obj.id];
-      if (spr) {
-        spr.setPosition(obj.x + obj.width / 2, obj.y + obj.height / 2);
-        spr.setDepth(obj.y + obj.height);
-      }
-    });
-
+    this.cullProps();
     this.renderAgentTaunts();
+  }
+
+  /** Hide static art outside the camera (plus a margin), show it again as it comes into view. */
+  private cullProps() {
+    const v = this.cameras.main.worldView;
+    if (v.width === 0 || this.cullables.length === 0) return;
+    // Only re-test when the view has moved or resized by a noticeable amount.
+    const last = this.lastCullView;
+    if (Math.abs(v.x - last.x) < 24 && Math.abs(v.y - last.y) < 24 && v.width === last.w && v.height === last.h) return;
+    this.lastCullView = { x: v.x, y: v.y, w: v.width, h: v.height };
+    const pad = 160;
+    const x0 = v.x - pad, y0 = v.y - pad, x1 = v.right + pad, y1 = v.bottom + pad;
+    for (const c of this.cullables) {
+      const on = c.x1 > x0 && c.x0 < x1 && c.y1 > y0 && c.y0 < y1;
+      if (on !== c.on) {
+        c.on = on;
+        c.obj.setVisible(on);
+      }
+    }
   }
 
   /** Overhead taunt bubbles above each agent (the agent's TACTIC lives in the HUD
@@ -926,7 +948,9 @@ export class GameScene extends Phaser.Scene {
     const decal = (name: string, c: number, r: number, depth: number, scale: number, alpha = 1) => {
       const x = (c + 0.5) * cell;
       const y = (r + 0.5) * cell;
-      this.add.image(x, y, TS_ENVIRO, name).setOrigin(0.5).setScale(scale).setDepth(depth).setAlpha(alpha);
+      const img = this.add.image(x, y, TS_ENVIRO, name).setOrigin(0.5).setScale(scale).setDepth(depth).setAlpha(alpha);
+      const hw = (img.width * scale) / 2, hh = (img.height * scale) / 2;
+      this.cullables.push({ obj: img, x0: x - hw, y0: y - hh, x1: x + hw, y1: y + hh, on: true });
     };
 
     const treeType = () => (['tree_a', 'tree_b', 'tree_c'] as const)[(rng() * 3) | 0];
@@ -1621,10 +1645,13 @@ export class GameScene extends Phaser.Scene {
     const baseY = obj.y + obj.height;
     const container = this.add.container(baseX, baseY);
     const shadow = this.add.ellipse(0, -2, Math.max(obj.width * 0.85, 14), Math.max(obj.height * 0.45, 8), 0x000000, 0.18);
-    const img = this.add.image(0, 0, f.tex, obj.propType).setOrigin(0.5, 1).setScale(f.scale ?? WORLD_SCALE);
+    const scale = f.scale ?? WORLD_SCALE;
+    const img = this.add.image(0, 0, f.tex, obj.propType).setOrigin(0.5, 1).setScale(scale);
     container.add([shadow, img]);
     container.setDepth(baseY);
     this.objSprites[obj.id] = container;
+    const hw = Math.max((f.sw * scale) / 2, obj.width / 2);
+    this.cullables.push({ obj: container, x0: baseX - hw, y0: baseY - f.sh * scale, x1: baseX + hw, y1: baseY + obj.height / 2, on: true });
   }
 
   private createPlayerSprite(p: Player) {
@@ -2172,10 +2199,7 @@ export class GameScene extends Phaser.Scene {
   private getCollidingObject(x: number, y: number, sz: number): GameObject | boolean | null {
     const m = 1;
     if (x - sz / 2 < m || x + sz / 2 > this.mapWidth - m || y - sz / 2 < m || y + sz / 2 > this.mapHeight - m) return true;
-    for (const o of this.gsObjects) {
-      if (o.type === 'furniture' && x + sz / 2 > o.x && x - sz / 2 < o.x + o.width && y + sz / 2 > o.y && y - sz / 2 < o.y + o.height) return o;
-    }
-    return null;
+    return findCollider(x, y, sz, this.gsObjects);
   }
 
   /**

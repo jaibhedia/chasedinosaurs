@@ -1,4 +1,28 @@
-import { useGameStore } from '@/store/gameStore';
+import { useMemo } from 'react';
+import { useGameStore, type GameObject } from '@/store/gameStore';
+
+/**
+ * The obstacle layer, drawn once to an image. It used to be ~4,400 SVG rects re-rendered
+ * with every blip update (12 times a second), which cost more than the game itself on a
+ * phone. Obstacles never move, so they're painted once per arena and size.
+ */
+function bakeObstacles(objects: GameObject[], mapW: number, mapH: number, W: number, H: number): string {
+  const scale = 2; // crisp on high-DPI screens
+  const canvas = document.createElement('canvas');
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  ctx.fillStyle = '#1d3322';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(22,41,26,0.9)';
+  const sx = (W * scale) / mapW;
+  const sy = (H * scale) / mapH;
+  for (const o of objects) {
+    ctx.fillRect(o.x * sx, o.y * sy, Math.max(3, o.width * sx), Math.max(3, o.height * sy));
+  }
+  return canvas.toDataURL('image/png');
+}
 
 /**
  * Top-down minimap of the arena. Reads the throttled `minimap` slice from the store
@@ -8,14 +32,21 @@ import { useGameStore } from '@/store/gameStore';
 export function Minimap({ isMobile = false }: { isMobile?: boolean }) {
   const minimap = useGameStore((s) => s.minimap);
   const gameObjects = useGameStore((s) => s.gameObjects);
-  if (!minimap.w || !minimap.h || minimap.dots.length === 0) return null;
 
   // Compact on touch so it tucks into the top-right and never collides with the joystick
   // (bottom-right) or the power-up button (bottom-left).
   const W = isMobile ? 96 : 196;
-  const H = isMobile
-    ? Math.max(54, Math.round(W * (minimap.h / minimap.w)))
-    : Math.round(Math.min(150, Math.max(96, W * (minimap.h / minimap.w))));
+  const H = !minimap.w || !minimap.h
+    ? 0
+    : isMobile
+      ? Math.max(54, Math.round(W * (minimap.h / minimap.w)))
+      : Math.round(Math.min(150, Math.max(96, W * (minimap.h / minimap.w))));
+  const backdrop = useMemo(
+    () => (H > 0 ? bakeObstacles(gameObjects, minimap.w, minimap.h, W, H) : ''),
+    [gameObjects, minimap.w, minimap.h, W, H],
+  );
+  if (!minimap.w || !minimap.h || minimap.dots.length === 0) return null;
+
   const sx = W / minimap.w;
   const sy = H / minimap.h;
 
@@ -41,22 +72,8 @@ export function Minimap({ isMobile = false }: { isMobile?: boolean }) {
         className="block"
         style={{ imageRendering: 'pixelated', display: 'block' }}
       >
-        {/* arena floor + frame */}
-        <rect x={0} y={0} width={W} height={H} fill="#1d3322" />
-
-        {/* map preview — obstacles (trees/bushes/props) as darker foliage clumps */}
-        {gameObjects.map((o, i) => (
-          <rect
-            key={`o-${i}`}
-            x={o.x * sx}
-            y={o.y * sy}
-            width={Math.max(1.5, o.width * sx)}
-            height={Math.max(1.5, o.height * sy)}
-            rx={1}
-            fill="#16291a"
-            opacity={0.9}
-          />
-        ))}
+        {/* arena floor + obstacles, pre-rendered */}
+        {backdrop && <image href={backdrop} x={0} y={0} width={W} height={H} preserveAspectRatio="none" />}
 
         <rect x={0.5} y={0.5} width={W - 1} height={H - 1} fill="none" stroke="#3e5e3e" strokeWidth={1} />
 

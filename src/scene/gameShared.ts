@@ -42,6 +42,61 @@ interface SharedState {
   gameTimer: number;
 }
 
+/**
+ * Spatial hash over the arena's colliders.
+ *
+ * The grassland has ~4,400 colliders, most of them the hedge ring. Collision checks used
+ * to scan all of them, and the bots make dozens of checks each per frame (steering probes,
+ * sub-stepped moves, corner escapes), which was the main CPU cost on a phone. Bucketing
+ * by cell makes a check look at the handful of colliders near the point instead.
+ *
+ * Built lazily per objects array and rebuilt if the array's length changes. Colliders
+ * don't move once the arena is built.
+ */
+const CELL = 64;
+interface SpatialIndex { length: number; cells: Map<number, GameObject[]>; }
+const indexCache = new WeakMap<GameObject[], SpatialIndex>();
+const cellKey = (cx: number, cy: number) => cx * 100_003 + cy;
+
+function indexFor(objects: GameObject[]): SpatialIndex {
+  const cached = indexCache.get(objects);
+  if (cached && cached.length === objects.length) return cached;
+  const cells = new Map<number, GameObject[]>();
+  for (const o of objects) {
+    if (o.type !== 'furniture') continue;
+    const c0 = Math.floor(o.x / CELL), c1 = Math.floor((o.x + o.width) / CELL);
+    const r0 = Math.floor(o.y / CELL), r1 = Math.floor((o.y + o.height) / CELL);
+    for (let c = c0; c <= c1; c++) {
+      for (let r = r0; r <= r1; r++) {
+        const k = cellKey(c, r);
+        const list = cells.get(k);
+        if (list) list.push(o); else cells.set(k, [o]);
+      }
+    }
+  }
+  const idx = { length: objects.length, cells };
+  indexCache.set(objects, idx);
+  return idx;
+}
+
+/** The first collider overlapping a `size`-wide box centred on (x, y), or null. */
+function findCollider(x: number, y: number, size: number, objects: GameObject[]): GameObject | null {
+  const h = size / 2;
+  const { cells } = indexFor(objects);
+  const c0 = Math.floor((x - h) / CELL), c1 = Math.floor((x + h) / CELL);
+  const r0 = Math.floor((y - h) / CELL), r1 = Math.floor((y + h) / CELL);
+  for (let c = c0; c <= c1; c++) {
+    for (let r = r0; r <= r1; r++) {
+      const list = cells.get(cellKey(c, r));
+      if (!list) continue;
+      for (const o of list) {
+        if (x + h > o.x && x - h < o.x + o.width && y + h > o.y && y - h < o.y + o.height) return o;
+      }
+    }
+  }
+  return null;
+}
+
 function findSafeSpawnPosition(mapWidth: number, mapHeight: number, objects: GameObject[], existingPlayers: Player[] = [], minDistance = 220): { x: number; y: number } {
   const margin = 80;
   // More attempts + a relaxing min-distance so spread stays wide but never deadlocks
@@ -50,8 +105,7 @@ function findSafeSpawnPosition(mapWidth: number, mapHeight: number, objects: Gam
     const relax = minDistance * (1 - attempt / 90);
     const x = Math.random() * (mapWidth - margin * 2) + margin;
     const y = Math.random() * (mapHeight - margin * 2) + margin;
-    const hitsFurniture = objects.some(obj => obj.type === 'furniture' && x + PLAYER_SIZE / 2 > obj.x && x - PLAYER_SIZE / 2 < obj.x + obj.width && y + PLAYER_SIZE / 2 > obj.y && y - PLAYER_SIZE / 2 < obj.y + obj.height);
-    if (hitsFurniture) continue;
+    if (findCollider(x, y, PLAYER_SIZE, objects)) continue;
     const tooClose = existingPlayers.some(p => Math.hypot(p.x - x, p.y - y) < relax);
     if (!tooClose) return { x, y };
   }
@@ -61,10 +115,7 @@ function findSafeSpawnPosition(mapWidth: number, mapHeight: number, objects: Gam
 function checkCollision(x: number, y: number, size: number, objects: GameObject[], mapWidth: number, mapHeight: number): boolean {
   const m = 1;
   if (x - size / 2 < m || x + size / 2 > mapWidth - m || y - size / 2 < m || y + size / 2 > mapHeight - m) return true;
-  for (const obj of objects) {
-    if (obj.type === 'furniture' && x + size / 2 > obj.x && x - size / 2 < obj.x + obj.width && y + size / 2 > obj.y && y - size / 2 < obj.y + obj.height) return true;
-  }
-  return false;
+  return findCollider(x, y, size, objects) !== null;
 }
 
 function createMapObjects(mapId: string, width: number, height: number): GameObject[] {
@@ -134,5 +185,5 @@ function createMapObjects(mapId: string, width: number, height: number): GameObj
   return objects;
 }
 
-export { sharedState, PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, COUNTDOWN_DURATION, GAME_DURATION, checkCollision, createMapObjects, findSafeSpawnPosition };
+export { sharedState, PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, COUNTDOWN_DURATION, GAME_DURATION, checkCollision, findCollider, createMapObjects, findSafeSpawnPosition };
 export type { SharedState };
