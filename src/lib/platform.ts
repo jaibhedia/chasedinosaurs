@@ -1,6 +1,8 @@
+import { Capacitor } from '@capacitor/core';
+
 /** Running inside the Capacitor iOS/Android shell (files are local; no service worker). */
 export function isNativeApp(): boolean {
-  return Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
+  return Capacitor.isNativePlatform();
 }
 
 /** Launched from the home screen as an installed PWA. */

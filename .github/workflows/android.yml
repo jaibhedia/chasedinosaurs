@@ -1,0 +1,41 @@
+# Builds an installable debug APK on every push and attaches it to the run
+# (Actions → this run → Artifacts → chase-dinosaurs-debug-apk). Sideload it on a
+# phone for testing; the Play Store needs a signed release AAB instead (ROADMAP.md).
+name: Android APK
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'server/**'
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - name: Build the web app
+        run: npm run build
+        env:
+          # Optional repository variable; without it the app uses the production server.
+          VITE_SOCKET_URL: ${{ vars.SOCKET_URL }}
+      - run: npx cap sync android
+      - name: Build the APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chase-dinosaurs-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

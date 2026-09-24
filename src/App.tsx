@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { SocketProvider } from '@/providers/SocketProvider';
 import LandscapePrompt from '@/components/LandscapePrompt';
 import { RoomWatcher } from '@/components/RoomWatcher';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { isNativeApp } from '@/lib/platform';
+import { initNative } from '@/lib/native';
 import { audioManager } from '@/utils/audioManager';
 import Home from '@/screens/Home';
 import ModeSelect from '@/screens/ModeSelect';
@@ -21,9 +22,12 @@ const PORTRAIT_OK = new Set(['/privacy', '/terms']);
 
 export default function App() {
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     audioManager.init();
+    void initNative(() => navigate(-1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

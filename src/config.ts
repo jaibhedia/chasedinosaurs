@@ -16,11 +16,13 @@
  * The native apps load from capacitor://localhost (iOS) or https://localhost (Android),
  * so they must never take the localhost branch — they always get 2 or 4.
  */
+import { Capacitor } from '@capacitor/core';
+
 const PRODUCTION_SOCKET_URL = 'https://chase-dinosaurs-4qb2.onrender.com';
 const OVERRIDE_KEY = 'chase-server-override';
 
 function isNativeShell(): boolean {
-  return window.location.protocol === 'capacitor:' || Boolean((window as any).Capacitor?.isNativePlatform?.());
+  return window.location.protocol === 'capacitor:' || Capacitor.isNativePlatform();
 }
 
 export function resolveSocketUrl(): string {

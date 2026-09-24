@@ -92,6 +92,28 @@ the home screen; iOS Safari gets a one-time "Share → Add to Home Screen" hint.
 
 Service workers only run in production builds; check with `npm run build && npm run preview`.
 
+## Native apps (iOS and Android)
+
+The same web build runs inside [Capacitor](https://capacitorjs.com) shells in `android/` and
+`ios/`. Native extras: landscape lock, hidden status bar, real haptics, the Android back
+button (opens the pause menu mid-match), and a reconnect check when the app resumes.
+
+```bash
+npm run android   # build, sync, open in Android Studio
+npm run ios       # build, sync, open in Xcode (macOS)
+npm run apk       # build a debug APK from the command line (needs the Android SDK)
+```
+
+- **APK without Android Studio:** every push builds a debug APK on GitHub Actions
+  ([`.github/workflows/android.yml`](.github/workflows/android.yml)). Download it from the
+  run's **Artifacts** and sideload it.
+- **Server CORS:** add `https://localhost` (Android) and `capacitor://localhost` (iOS) to the
+  server's `CORS_ORIGIN`.
+- **Bundle id:** `fun.chasedinosaurs.app` in [`capacitor.config.ts`](capacitor.config.ts).
+  It's permanent once published, so confirm it before the first store upload.
+- **Icons and splash:** generated from `resources/` with
+  `npx @capacitor/assets generate --assetPath resources`.
+
 ## How a match works
 
 - The arena is generated from a seeded RNG, so every client in a room builds the same map.

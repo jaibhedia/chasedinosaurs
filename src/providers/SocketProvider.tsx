@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { useGameStore } from '@/store/gameStore';
 import { setGameSocket, recordTimeSample, resetTimeSync } from '@/lib/socketBridge';
 import { resolveSocketUrl } from '@/config';
+import { RESUME_EVENT } from '@/lib/native';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
@@ -137,6 +138,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', checkConnection);
     window.addEventListener('online', checkConnection);
     window.addEventListener('focus', checkConnection);
+    window.addEventListener(RESUME_EVENT, checkConnection);
 
     socket.on('rejoin-failed', ({ reason }: { reason: string }) => {
       console.warn('[socket] rejoin failed:', reason);
