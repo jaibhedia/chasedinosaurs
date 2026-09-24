@@ -67,7 +67,7 @@ as the objective (`3b8e643`), and the bot difficulty ramp (`f633cc7`, capped at 
 | Deps | `@privy-io/*`, `wagmi`, `viem`, `@worldcoin/*`, `ethers`, `@supabase/supabase-js`, `@tanstack/react-query` |
 | Assets | `public/sprites/` (unused, 4.7 MB) |
 | Docs | Move `plan.md`, `AI_USAGE.md`, `submission/`, `SPEC.md` to `docs/ethonline/`. Rewrite the README around the game |
-| License | The MIT carve-out for `packages/` disappears along with `packages/`. Decide what the new license is (open question in §12) |
+| License | The MIT carve-out for `packages/` disappears along with `packages/`. Replace with a proprietary notice: © Abstract Studio, all rights reserved (§12) |
 
 **Done when:** `grep -riE "privy|wagmi|viem|arc|worldcoin|subgraph|usdc|0g"` over `app/`,
 `game-app/src` and `server/src` returns nothing meaningful, and solo plus a 2-player room both
@@ -98,7 +98,7 @@ The server is a **pure relay**: `game-state-update`, `player-input`, `egg-state`
 | M3 | **Quick Play.** One button puts you in a public room, and bots fill empty seats after ~8 s. Room codes stay for playing with friends | 1 day | Landing page → playing a match in under 10 s |
 | M4 | **Mobile lifecycle.** Test backgrounding, screen lock, and switching Wi-Fi to 4G against the existing 30 s reconnect grace. Reconnect the socket on `visibilitychange` (and Capacitor `App.resume` later) | 1 day | Locking the phone for 10 s mid-match drops you back into the same match |
 | M5 | **Bots on the server** (later, together with matchmaking). Move bot steering into a shared module that runs on the server, so no client is the authority. This needs the collision maps shared between client and server | 2–3 days | Kill the host's tab, and the bots keep playing smoothly for everyone else |
-| M6 | **Hosting.** Render's free tier sleeps, and the first match after a sleep takes ~30 s to start. Use a paid instance, and host near the players (if most are in India, Mumbai/Singapore beats Oregon) | config | First-join latency under 1 s |
+| M6 | **Hosting.** Render's free tier sleeps, and the first match after a sleep takes ~30 s to start. Use a paid instance. Players were spread over ~30 countries in Europe, Southeast Asia and the US, so start in **Frankfurt** (the best single-region compromise: roughly 90 ms to the US East coast, 160 ms to Singapore), then go multi-region (Frankfurt, Singapore, Virginia) and let Quick Play pick the lowest-ping region | config | First-join latency under 1 s |
 
 ---
 
@@ -152,7 +152,7 @@ With the server running, the bots also talk.
 | **Haptics** | `navigator.vibrate` on the web; Capacitor Haptics on native. Tap on steal, buzz while holding the egg |
 | **SFX pass** | There are only 3 audio files today (theme, running, power-up). Add: steal, countdown beeps, last-10-s tension loop, win and lose stings. `theme.mp3` is 630 KB, so re-encode it to ~128 kbps |
 | **First-run tutorial** | Replace the text slides with a 20-second guided round against one Easy bot: grab the egg, get tagged, steal it back |
-| **Win condition check** ❓ | Today the **last holder at the buzzer wins**, so the first 50 s barely matter. Playtest the alternative: most total seconds held wins, with a bonus for holding at the buzzer. See §12 |
+| **Win condition** | **Keep last holder at the buzzer wins.** It's the more chaotic, exciting rule. Track total seconds held anyway and show it on results, so "most time held" can be trialled as a second mode later without new plumbing |
 | **Arenas and characters** (Edgar #5) | This is art work, so schedule it after the above. One new arena is worth more than polishing a third one |
 | **Fix the docs** | README power-up table, 45 s vs 60 s mentions, and the "30 seconds" copy in the launch kit |
 
@@ -200,7 +200,8 @@ Screen**, **App** (pause/resume → socket reconnect), **Keep Awake** during mat
 - **Guideline 4.2 (minimum functionality):** thin web wrappers get rejected. Offline solo,
   native haptics and a real orientation lock make it clearly an app. Game Center
   leaderboards help further.
-- **Guideline 1.2 (user-generated content):** player names and **voice chat with strangers**
+- **Guideline 1.2 (user-generated content):** voice chat stays, so it needs per-player mute and a report
+  button. Player names and **voice chat with strangers**
   require filtering, report and block tools. The simplest fix is to allow voice only in
   private friend rooms, and use preset names or a profanity filter.
 - Microphone permission string (`NSMicrophoneUsageDescription`) if voice ships.
@@ -237,15 +238,16 @@ Never cut: M1, M2, A1, and PWA precache.
 
 ---
 
-## 12. Open questions for you
+## 12. Decisions (answered Sep 24)
 
-1. **Voice chat:** keep it (friends-only on mobile), or cut it from v1?
-2. **Win rule:** last holder wins (current), or most time held? I'd playtest both.
-3. **Landscape only, or add portrait?** Most casual mobile play is one-handed portrait.
-   That means re-laying out the camera and HUD, but it widens the audience.
-4. **License:** stay proprietary, or open-source the engine?
-5. **Where are the players?** This decides the server region.
-6. **Keep a Next.js landing page for SEO,** or go all-Vite?
+| Question | Answer | What it changes |
+|---|---|---|
+| Voice chat | **Keep** | Mute per player plus a report button (App Store 1.2). Off by default in Quick Play with strangers, on by default in friend rooms |
+| Win rule | **Last holder at the buzzer wins** (more chaos). Iterate from playtests | Results show total seconds held as well, so a "most time held" mode can be trialled later |
+| Orientation | **Landscape only** | Keep `RotateOverlay`; lock natively in Capacitor |
+| License | **Proprietary, a product of Abstract Studio.** Not open source | `LICENSE` becomes an all-rights-reserved notice; the MIT `packages/` carve-out goes |
+| Players | **~30 countries across Europe, Southeast Asia and the US** | Server starts in Frankfurt, then multi-region (see M6) |
+| Landing page | All-Vite (my call, no answer needed) | A static prerendered landing inside the one app |
 
 ---
 
