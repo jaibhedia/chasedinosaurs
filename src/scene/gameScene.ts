@@ -4,6 +4,8 @@ import { characters } from '@/data/characters';
 import { audioManager } from '@/utils/audioManager';
 import { PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, GAME_DURATION, checkCollision, findCollider, findSafeSpawnPosition } from './gameShared';
 import { getGameSocket } from '@/lib/socketBridge';
+import { TUNING, PERSONAS, PERSONA_SPEED, assignRoles, ramp, type BotTuning, type Role } from './botTactics';
+import type { Difficulty } from '@/store/gameStore';
 
 const CHAR_SPRITES: Record<string, { name: string }> = {
   doux: { name: 'doux' },
@@ -223,8 +225,18 @@ export class GameScene extends Phaser.Scene {
   private camTargetX = 0;
   private camTargetY = 0;
   private powerUpAuras: Record<string, Phaser.GameObjects.Arc> = {};
-  /** Bot movement: detect stuck and recover (inferno collision is tight). */
+  /** Bot movement: detect stuck and recover. */
   private botStuckAccum: Record<string, { x: number; y: number; t: number }> = {};
+  /** Solo difficulty; online fill-bots always play 'normal'. */
+  private difficulty: Difficulty = 'normal';
+  /** Each bot's current role and the point it's heading for, refreshed at its reaction speed. */
+  private botMind: Record<string, { role: Role; aim: { x: number; y: number } | null; aimAt: number }> = {};
+  private lastRoleAt = 0;
+  /** Observed bot velocity (px/s), smoothed, so bots can lead each other too. */
+  private botVel: Record<string, { vx: number; vy: number }> = {};
+  private botLastPos: Record<string, { x: number; y: number }> = {};
+  /** Distance from the map edge to the inside of the hedge ring. */
+  private arenaInset = 60;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -256,6 +268,7 @@ export class GameScene extends Phaser.Scene {
     this.roomCode = data.roomCode || null;
     this.localUserId = useGameStore.getState().userId || undefined;
     this.isOnlineMp = this.gameMode === 'multiplayer' && !useGameStore.getState().multiplayerHiddenFill;
+    this.difficulty = this.gameMode === 'single-player' ? useGameStore.getState().difficulty : 'normal';
     this.agentAuthority = this.computeAgentAuthority();
   }
 
@@ -312,6 +325,10 @@ export class GameScene extends Phaser.Scene {
     if (!selectedCharacter) return;
 
     this.gameStartTime = this.serverStartTime || Date.now();
+    this.botMind = {};
+    this.botVel = {};
+    this.botLastPos = {};
+    this.lastRoleAt = 0;
     this.cullables = [];
     this.lastCullView = { x: NaN, y: NaN, w: 0, h: 0 };
     this.botStuckAccum = {};
@@ -524,6 +541,14 @@ export class GameScene extends Phaser.Scene {
       const eggPt = this.nearestFreePoint(centerX, centerY, objects);
       store.setEgg(null, { x: eggPt.x, y: eggPt.y });
       this.spawnWorldEgg(eggPt.x, eggPt.y);
+    }
+
+    // Every bot gets a stable persona from its slot, so the bots feel different even with
+    // no LLM. The LLM can still restyle them.
+    let botSlot = 0;
+    for (const p of finalPlayers) {
+      if (p.isBot && !p.persona) p.persona = PERSONAS[botSlot % PERSONAS.length];
+      if (p.isBot) botSlot++;
     }
 
     this.gsPlayers = finalPlayers;
@@ -926,6 +951,7 @@ export class GameScene extends Phaser.Scene {
     const objects: GameObject[] = [];
     const occupied = new Set<string>();
     const borderThickness = 12;
+    this.arenaInset = borderThickness * cell + PLAYER_SIZE;
 
     // The build grid (cols×rows) tiles the playable area 1:1 (cols = mapWidth/cell), so
     // a cell maps straight to world px — NO border offset. (The old −borderThickness*cell
@@ -2230,15 +2256,15 @@ export class GameScene extends Phaser.Scene {
           if (!p.isBot) continue;
           const it = byId.get(p.id);
           if (!it) continue;
-          p.aiIntent = it;
+          // Tactics are decided locally (botTactics.ts); the LLM supplies the voice.
           if (it.persona) p.persona = it.persona;
           if (it.taunt) { p.taunt = it.taunt; p.tauntAt = tNow; }
-          // Dual-write to the store so the HUD bots panel reflects live state.
-          store.updatePlayer(p.id, {
-            aiIntent: it,
-            ...(it.persona ? { persona: it.persona } : {}),
-            ...(it.taunt ? { taunt: it.taunt, tauntAt: tNow } : {}),
-          });
+          if (it.persona || it.taunt) {
+            store.updatePlayer(p.id, {
+              ...(it.persona ? { persona: it.persona } : {}),
+              ...(it.taunt ? { taunt: it.taunt, tauntAt: tNow } : {}),
+            });
+          }
         }
       };
       socket.on('agent-intents', this.onAgentIntents);
@@ -2313,91 +2339,73 @@ export class GameScene extends Phaser.Scene {
     // renders them off the broadcast (updateMultiplayerNet → agent-state). Single-
     // player / hidden-fill always own their bots (agentAuthority defaults true there).
     if (this.isOnlineMp && !this.agentAuthority) return;
-    const eggHolder = this.gsPlayers.find(p => p.hasEgg);
+    const bots = this.gsPlayers.filter((p) => p.isBot);
+    if (bots.length === 0) return;
+
+    const tuning = TUNING[this.difficulty];
+    const progress = 1 - Math.max(0, Math.min(1, this.gameTimer / GAME_DURATION));
+    const speedRamp = ramp(tuning.speed, progress);
+    const lead = ramp(tuning.lead, progress);
+    const now = Date.now();
+    const holder = this.gsPlayers.find((p) => p.hasEgg) ?? null;
     const eggPos = useGameStore.getState().eggPosition;
-    this.gsPlayers.forEach(bot => {
-      if (!bot.isBot) return;
+
+    // Re-read the situation at the difficulty's reaction speed.
+    if (now - this.lastRoleAt >= tuning.reactionMs) {
+      this.lastRoleAt = now;
+      const roles = assignRoles(
+        {
+          bots: bots.map((b) => ({ id: b.id, x: b.x, y: b.y })),
+          holder: holder ? { id: holder.id, x: holder.x, y: holder.y, isBot: holder.isBot } : null,
+          egg: holder ? null : eggPos,
+        },
+        tuning.teamwork,
+      );
+      for (const b of bots) {
+        const role = roles.get(b.id) ?? 'roam';
+        const mind = this.mindOf(b);
+        if (mind.role !== role) { mind.role = role; mind.aimAt = 0; }
+        // The HUD bots panel shows the tactic; only touch the store when it changes.
+        if (b.aiIntent?.mode !== role) {
+          const intent = { ...(b.aiIntent ?? {}), agentId: b.id, mode: role };
+          b.aiIntent = intent;
+          useGameStore.getState().updatePlayer(b.id, { aiIntent: intent });
+        }
+      }
+    }
+
+    // How close a direct hunter switches from its (possibly stale) aim point to the
+    // target itself. Easy bots commit to where you were and overshoot.
+    const lockOn = this.difficulty === 'easy' ? 45 : this.difficulty === 'hard' ? 130 : 90;
+
+    for (const bot of bots) {
+      const mind = this.mindOf(bot);
       const speedMul = bot.speedBoostActive ? 2.5 : 1.0;
-      const infernoMul = this.isInInfernoSlowZone(bot.x, bot.y, PLAYER_SIZE) ? 0.72 : 1;
+      const slowMul = bot.slowedUntil && bot.slowedUntil > now ? 0.3 : 1.0;
       // Holder is slower (target); hunters are faster (so they can close the gap).
       const baseMult = bot.hasEgg ? BOT_SPEED_HOLDER : BOT_SPEED_HUNTER;
-      const now = Date.now();
-      const slowEffectMul = (bot.slowedUntil && bot.slowedUntil > now) ? 0.3 : 1.0;
-      // Persona (set by the LLM) gives each agent a distinct feel: an aggressive bot
-      // visibly presses harder than a cautious one, so the brains read differently.
-      const personaMul =
-        bot.persona === 'aggressive' ? 1.14 :
-        bot.persona === 'cocky' ? 1.06 :
-        bot.persona === 'cautious' ? 0.9 : 1.0;
-      const ramp = this.botRamp();
-      const speed = bot.character.speed * baseMult * dt * speedMul * infernoMul * slowEffectMul * personaMul * ramp.speed;
-
-      // Intent set by the LLM agent brain (updateAgentBrains). When absent (provider
-      // offline / not yet ticked) every branch below falls through to the original
-      // scripted behavior.
-      const intent = bot.aiIntent;
+      const personaMul = PERSONA_SPEED[bot.persona ?? 'sneaky'] ?? 1;
+      const pxPerSec = bot.character.speed * baseMult * speedMul * slowMul * personaMul * speedRamp;
+      const speed = pxPerSec * dt;
 
       if (bot.hasEgg) {
-        // Holding the egg ALWAYS means flee — a gameplay invariant, not the LLM's call.
-        const threats = this.gsPlayers.filter(p => p.id !== bot.id && !p.isInvincible);
-        if (threats.length > 0) {
-          let nearest = threats[0];
-          let minD = Math.hypot(bot.x - nearest.x, bot.y - nearest.y);
-          for (const p of threats) {
-            const d = Math.hypot(bot.x - p.x, bot.y - p.y);
-            if (d < minD) { minD = d; nearest = p; }
-          }
-          const push = CHASE_FLEE_PUSH + (1 - Math.min(minD, CHASE_FLEE_RADIUS) / CHASE_FLEE_RADIUS) * 0.9;
-          this.moveTowards(bot, bot.x + (bot.x - nearest.x) * push, bot.y + (bot.y - nearest.y) * push, speed);
-        } else {
-          this.wander(bot, speed);
-        }
-      } else if (intent && (intent.mode === 'hunt' || intent.mode === 'intercept')) {
-        // The LLM picks the ROLE (hunt vs intercept); the TARGET is always whoever
-        // CURRENTLY holds the egg, resolved live each frame. So a stale intent can
-        // never make an agent chase someone who already lost the egg — instant
-        // reactivity between the slower LLM strategy ticks.
-        const target = eggHolder && !eggHolder.isInvincible ? eggHolder : undefined;
-        if (target) {
-          if (intent.mode === 'intercept') {
-            // Commits hardest to the predicted point — this is the role that cuts you off.
-            const aim = this.interceptPoint(bot, target, speed, ramp.lead);
-            this.moveTowards(bot, aim.x, aim.y, speed);
-          } else {
-            // Hunt leads less, so a pack doesn't converge on one predicted point and
-            // leave the target a clear lane behind them.
-            const aim = this.interceptPoint(bot, target, speed, ramp.lead * 0.6);
-            this.moveTowards(bot, aim.x, aim.y, speed);
-          }
-        } else if (eggPos) {
-          this.moveTowards(bot, eggPos.x, eggPos.y, speed);
-        } else {
-          this.wander(bot, speed);
-        }
-      } else if (intent && intent.mode === 'guard' && eggPos) {
-        // Guard: hold station near the loose egg / chokepoint, orbiting it.
-        const gx = eggPos.x + Math.cos(this.time.now * 0.0006 + bot.x) * 90;
-        const gy = eggPos.y + Math.sin(this.time.now * 0.0006 + bot.y) * 90;
-        this.moveTowards(bot, gx, gy, speed * 0.85);
-      } else if (eggHolder && !eggHolder.isInvincible) {
-        // Fallback (roam / no intent): converge on the holder. Leads like hunt does,
-        // so a bot with no intent yet is merely less coordinated than one with a brain,
-        // not visibly broken — this is the path every bot takes for the first few
-        // seconds of a round, before the first strategy tick lands.
-        const aim = this.interceptPoint(bot, eggHolder, speed, ramp.lead * 0.6);
-        this.moveTowards(bot, aim.x, aim.y, speed);
-      } else if (eggPos) {
-        // Egg is on the floor — race for it.
-        this.moveTowards(bot, eggPos.x, eggPos.y, speed);
+        this.fleeFrom(bot, speed);
       } else {
-        this.wander(bot, speed);
+        if (!mind.aim || now - mind.aimAt >= tuning.reactionMs) {
+          mind.aim = this.aimFor(bot, mind.role, holder, eggPos, pxPerSec, lead);
+          mind.aimAt = now;
+        }
+        let aim = mind.aim;
+        if (holder && !holder.isInvincible && holder.id !== bot.id && mind.role === 'hunt'
+          && Math.hypot(holder.x - bot.x, holder.y - bot.y) < lockOn) {
+          aim = { x: holder.x, y: holder.y };
+        }
+        if (aim) this.moveTowards(bot, aim.x, aim.y, speed);
+        else this.wander(bot, speed);
       }
 
-      // Holder leans more often on its power-up (defensive); hunters less so.
-      const puChance = bot.hasEgg ? 0.014 : 0.009;
-      if (bot.powerUpReady && !bot.powerUpActive && !bot.powerUpCooldown && Math.random() < puChance) {
-        this.activatePowerUp(bot);
-      }
+      this.maybeUsePower(bot, tuning, holder);
+      this.trackBotVelocity(bot, dt);
 
       const st = this.botStuckAccum[bot.id] || { x: bot.x, y: bot.y, t: 0 };
       const movedBit = Math.hypot(bot.x - st.x, bot.y - st.y);
@@ -2414,12 +2422,15 @@ export class GameScene extends Phaser.Scene {
         bot.y = rescue.y;
         bot.targetX = undefined;
         bot.targetY = undefined;
+        mind.aim = null;
         st.t = 0;
         st.x = bot.x;
         st.y = bot.y;
+        this.botLastPos[bot.id] = { x: bot.x, y: bot.y };
         useGameStore.getState().updatePlayer(bot.id, { x: bot.x, y: bot.y });
       } else if (st.t > 1.05) {
         this.tryBotSlideOutOfCorner(bot);
+        mind.aim = null;
         st.t = 0.55;
         st.x = bot.x;
         st.y = bot.y;
@@ -2428,7 +2439,152 @@ export class GameScene extends Phaser.Scene {
         bot.targetY = undefined;
       }
       this.botStuckAccum[bot.id] = st;
-    });
+    }
+  }
+
+  private mindOf(bot: Player): { role: Role; aim: { x: number; y: number } | null; aimAt: number } {
+    let mind = this.botMind[bot.id];
+    if (!mind) {
+      mind = { role: 'roam', aim: null, aimAt: 0 };
+      this.botMind[bot.id] = mind;
+    }
+    return mind;
+  }
+
+  /** Holding the egg always means run: away from the nearest threat, harder the closer it is. */
+  private fleeFrom(bot: Player, speed: number) {
+    const threats = this.gsPlayers.filter((p) => p.id !== bot.id && !p.isInvincible);
+    if (threats.length === 0) { this.wander(bot, speed); return; }
+    let nearest = threats[0];
+    let minD = Math.hypot(bot.x - nearest.x, bot.y - nearest.y);
+    for (const p of threats) {
+      const d = Math.hypot(bot.x - p.x, bot.y - p.y);
+      if (d < minD) { minD = d; nearest = p; }
+    }
+    const push = CHASE_FLEE_PUSH + (1 - Math.min(minD, CHASE_FLEE_RADIUS) / CHASE_FLEE_RADIUS) * 0.9;
+    this.moveTowards(bot, bot.x + (bot.x - nearest.x) * push, bot.y + (bot.y - nearest.y) * push, speed);
+  }
+
+  /** Where this bot should head for its role right now. Null means wander. */
+  private aimFor(
+    bot: Player,
+    role: Role,
+    holder: Player | null,
+    egg: { x: number; y: number } | null,
+    pxPerSec: number,
+    lead: number,
+  ): { x: number; y: number } | null {
+    if (holder && holder.id !== bot.id) {
+      const dx = holder.x - bot.x;
+      const dy = holder.y - bot.y;
+      const d = Math.hypot(dx, dy) || 1;
+      // Shielded holder can't be tagged: stalk just outside reach, ready for it to drop.
+      if (holder.isInvincible) {
+        const keep = 130;
+        return d <= keep ? { x: bot.x, y: bot.y } : { x: holder.x - (dx / d) * keep, y: holder.y - (dy / d) * keep };
+      }
+      if (role === 'intercept') return this.interceptPoint(bot, holder, pxPerSec, lead);
+      if (role === 'guard') {
+        // Cover the lane the holder is running into, or the side away from the nearest
+        // other chaser if they're standing still.
+        const v = this.velocityOf(holder);
+        const sp = Math.hypot(v.vx, v.vy);
+        let ex = 0, ey = 0;
+        if (sp > 40) { ex = v.vx / sp; ey = v.vy / sp; }
+        else {
+          const others = this.gsPlayers.filter((p) => p.id !== holder.id && p.id !== bot.id);
+          let near: Player | null = null;
+          let nd = Infinity;
+          for (const o of others) {
+            const od = Math.hypot(o.x - holder.x, o.y - holder.y);
+            if (od < nd) { nd = od; near = o; }
+          }
+          if (near && nd > 1) { ex = (holder.x - near.x) / nd; ey = (holder.y - near.y) / nd; }
+          else { ex = -dx / d; ey = -dy / d; }
+        }
+        const reach = 150 + 120 * lead;
+        return this.clampToArena(holder.x + ex * reach, holder.y + ey * reach);
+      }
+      return this.interceptPoint(bot, holder, pxPerSec, lead * 0.5);
+    }
+    if (egg) {
+      if (role === 'guard') {
+        // Body-block: stand between the egg and whoever else is closest to it.
+        let near: Player | null = null;
+        let nd = Infinity;
+        for (const o of this.gsPlayers) {
+          if (o.id === bot.id) continue;
+          const od = Math.hypot(o.x - egg.x, o.y - egg.y);
+          if (od < nd) { nd = od; near = o; }
+        }
+        if (near && nd > 1) return this.clampToArena(egg.x + ((near.x - egg.x) / nd) * 70, egg.y + ((near.y - egg.y) / nd) * 70);
+      }
+      return { x: egg.x, y: egg.y };
+    }
+    return null;
+  }
+
+  /** Power-up use per difficulty: rare random presses, random presses, or when it helps. */
+  private maybeUsePower(bot: Player, tuning: BotTuning, holder: Player | null) {
+    if (!bot.powerUpReady || bot.powerUpActive || bot.powerUpCooldown) return;
+    if (tuning.powers !== 'smart') {
+      // Holder leans more often on its power-up (defensive); hunters less so.
+      const base = bot.hasEgg ? 0.014 : 0.009;
+      if (Math.random() < (tuning.powers === 'rare' ? base * 0.3 : base)) this.activatePowerUp(bot);
+      return;
+    }
+    const type = bot.character.powerUp.type;
+    if (bot.hasEgg) {
+      let threat = Infinity;
+      for (const p of this.gsPlayers) {
+        if (p.id === bot.id || p.isInvincible) continue;
+        threat = Math.min(threat, Math.hypot(p.x - bot.x, p.y - bot.y));
+      }
+      const use =
+        (type === 'shield' && threat < 90) ||
+        (type === 'earthquake' && threat < 200) ||
+        (type === 'speed-boost' && threat < 170) ||
+        (type === 'teleport' && threat < 80);
+      if (use) this.activatePowerUp(bot);
+      return;
+    }
+    if (!holder || holder.isInvincible) return;
+    const d = Math.hypot(holder.x - bot.x, holder.y - bot.y);
+    const use =
+      (type === 'speed-boost' && d < 280 && d > 60) ||
+      (type === 'earthquake' && d < 220) ||
+      (type === 'teleport' && d > 450);
+    // A shield on a chaser only stops it from tagging, so it's never worth it.
+    if (use) this.activatePowerUp(bot);
+  }
+
+  /** Velocity in px/s for anyone: input for you, network for remote players, observed for bots. */
+  private velocityOf(p: Player): { vx: number; vy: number } {
+    if (p.id === 'player') return this.playerVelocity['player'] ?? { vx: 0, vy: 0 };
+    const net = this.remoteNet[p.id];
+    if (net) return { vx: net.vx, vy: net.vy };
+    return this.botVel[p.id] ?? { vx: 0, vy: 0 };
+  }
+
+  private trackBotVelocity(bot: Player, dt: number) {
+    const prev = this.botLastPos[bot.id];
+    this.botLastPos[bot.id] = { x: bot.x, y: bot.y };
+    if (!prev || dt <= 0) return;
+    let vx = (bot.x - prev.x) / dt;
+    let vy = (bot.y - prev.y) / dt;
+    const sp = Math.hypot(vx, vy);
+    if (sp > 900) { vx = (vx / sp) * 900; vy = (vy / sp) * 900; } // teleports, rescues
+    const old = this.botVel[bot.id] ?? { vx: 0, vy: 0 };
+    this.botVel[bot.id] = { vx: old.vx + (vx - old.vx) * 0.3, vy: old.vy + (vy - old.vy) * 0.3 };
+  }
+
+  /** Keep aim points inside the hedge ring so bots don't run into it chasing a projection. */
+  private clampToArena(x: number, y: number): { x: number; y: number } {
+    const m = this.arenaInset;
+    return {
+      x: Math.max(m, Math.min(this.mapWidth - m, x)),
+      y: Math.max(m, Math.min(this.mapHeight - m, y)),
+    };
   }
 
   private wander(bot: Player, speed: number) {
@@ -2496,75 +2652,36 @@ export class GameScene extends Phaser.Scene {
   /**
    * Where to aim to cut a moving target off, instead of trailing it.
    *
-   * Both chase branches used to aim at (or just past) where the target *is*. A pursuer
-   * that always steers at the target's current position runs the same path the target
-   * already ran and closes only on the speed difference — which is why the bots looked
-   * stupid: with speeds this close, a fleeing player is never caught, and the bot visibly
-   * swings in behind on every turn instead of cutting the corner.
+   * Aims at where the target will be by the time the bot could get there: target
+   * velocity (px/s) times the bot's travel time (s), capped at 1.2s so a slow bot doesn't
+   * extrapolate a straight line far past any turn. `strength` scales the lead: 0 aims at
+   * the target, 1 is the full intercept.
    *
-   * `playerVelocity` is per-FRAME displacement, same units as `speed`, so the frames
-   * needed to close the gap is just distance / speed. Aiming at where the target will be
-   * after that many frames is the standard interception solution.
-   *
-   * The cap matters: a slowed bot produces an enormous frame count, and extrapolating a
-   * target's current heading that far predicts a position it will never visit. Past a
-   * point, aiming at the target itself is the better guess.
+   * This used to multiply a px/s velocity by a frame count, so every aim point landed
+   * thousands of pixels ahead of a moving player and bots ran parallel to you toward the
+   * map edge instead of cutting you off. Remote players had no velocity at all.
    */
-  /**
-   * Bot competence over the course of a round: easy at the whistle, medium by the end.
-   *
-   * Fixing the interception maths made the bots genuinely competent, which is worse than
-   * it sounds for a first-time player — being hunted accurately in the opening seconds,
-   * before you know the controls or what the egg is for, reads as unfair rather than
-   * hard, and that is where people quit.
-   *
-   * So the round opens soft and tightens. The ceiling is deliberately *medium*, not the
-   * full-strength interception: a bot that always solves the intercept perfectly is
-   * unbeatable rather than fun, and the top end here still leaves a competent player
-   * room to juke. Early softness comes mostly from `lead` (bad prediction reads as a bot
-   * that misjudges, which looks natural) rather than from speed, since an obviously slow
-   * bot just looks broken.
-   */
-  private botRamp(): { speed: number; lead: number } {
-    const progress = 1 - Math.max(0, Math.min(1, this.gameTimer / GAME_DURATION));
-    const lerp = (a: number, b: number) => a + (b - a) * progress;
-    return {
-      speed: lerp(0.86, 1.0),
-      lead: lerp(0.3, 0.85),
-    };
-  }
-
-  private interceptPoint(bot: Player, target: Player, speed: number, strength = 1): { x: number; y: number } {
-    if (speed <= 0.0001) return { x: target.x, y: target.y };
-    const tv = this.playerVelocity[target.id] || { vx: 0, vy: 0 };
+  private interceptPoint(bot: Player, target: Player, botPxPerSec: number, strength = 1): { x: number; y: number } {
+    const tv = this.velocityOf(target);
     const dist = Math.hypot(target.x - bot.x, target.y - bot.y);
-    const frames = Math.min(dist / speed, 45) * strength;
-    const ax = target.x + tv.vx * frames;
-    const ay = target.y + tv.vy * frames;
+    const t = Math.min(dist / Math.max(botPxPerSec, 1), 1.2) * strength;
+    const ax = target.x + tv.vx * t;
+    const ay = target.y + tv.vy * t;
 
     /**
-     * Fan the pursuers out so they surround instead of stacking.
-     *
-     * Separation keeps bots from overlapping each other, but every one of them still
-     * solved for the same aim point and took the same line to it. The result was the
-     * dogpile: a ring forms on the egg holder, one bot snatches, everyone re-converges on
-     * the new holder a few pixels away, and it loops in place looking broken.
-     *
-     * Each bot gets a stable lateral offset from its id, applied perpendicular to its
-     * approach, so they arc in from different sides. The offset shrinks with distance and
-     * reaches zero on contact — they spread out across the map and still close properly
-     * for the tag, rather than orbiting forever.
+     * Fan the pursuers out so they surround instead of stacking. Each bot gets a stable
+     * lateral offset from its id, applied perpendicular to its approach and shrinking to
+     * zero on contact, so they arc in from different sides and still close for the tag.
      */
     const dx = ax - bot.x;
     const dy = ay - bot.y;
     const d = Math.hypot(dx, dy);
-    if (d < 1) return { x: ax, y: ay };
-    // Stable per-bot value in [-1, 1] — same bot always takes the same side.
+    if (d < 1) return this.clampToArena(ax, ay);
     let h = 0;
     for (let i = 0; i < bot.id.length; i++) h = (h * 31 + bot.id.charCodeAt(i)) | 0;
     const side = ((h % 1000) / 500) - 1;
     const lateral = Math.min(d * 0.4, 130) * side;
-    return { x: ax + (-dy / d) * lateral, y: ay + (dx / d) * lateral };
+    return this.clampToArena(ax + (-dy / d) * lateral, ay + (dx / d) * lateral);
   }
 
   private moveTowards(player: Player, tx: number, ty: number, speed: number) {

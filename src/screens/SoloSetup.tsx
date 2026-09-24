@@ -11,9 +11,9 @@ import { saveMatchConfig } from '@/lib/matchConfig';
 import { usePageTitle } from '@/hooks/usePageTitle';
 
 const DIFFICULTIES: Array<{ id: Difficulty; label: string; hint: string; color: string }> = [
-  { id: 'easy', label: 'Easy', hint: 'Bots misjudge and give up early', color: '#6ab04c' },
-  { id: 'normal', label: 'Normal', hint: 'Bots work together to cut you off', color: '#ffc93c' },
-  { id: 'hard', label: 'Hard', hint: 'Fast, coordinated, and they use their powers', color: '#e8503a' },
+  { id: 'easy', label: 'Easy', hint: 'Slower bots that all chase you the same way', color: '#6ab04c' },
+  { id: 'normal', label: 'Normal', hint: 'Bots split up: one chases, one cuts you off', color: '#ffc93c' },
+  { id: 'hard', label: 'Hard', hint: 'Faster, sharper, and they time their powers', color: '#e8503a' },
 ];
 
 /**
