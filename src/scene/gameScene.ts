@@ -74,6 +74,12 @@ const INFERNO_BG_1_KEY = 'inferno_bg_1';
 const INFERNO_BG_2_KEY = 'inferno_bg_2';
 const DUNGEON_DETAIL_TILE_KEY = 'dungeon_detail_tile';
 const MAX_SIM_DELTA = 1 / 30;
+const POWER_COLOR: Record<string, number> = {
+  'speed-boost': 0x38bdf8,
+  earthquake: 0xf97316,
+  shield: 0x22c55e,
+  teleport: 0xa78bfa,
+};
 const LOCAL_PLAYER_SPRITE_FOLLOW = 1;
 const REMOTE_PLAYER_SPRITE_FOLLOW = 0.4;
 /** Cap (ms) on how far a remote player is dead-reckoned past its last packet, so a
@@ -135,6 +141,7 @@ export class GameScene extends Phaser.Scene {
   private onEggOwner?: (payload: any) => void;
   private onMatchResult?: (payload: any) => void;
   private onRoomRejoined?: (payload: any) => void;
+  private onPowerUsed?: (payload: any) => void;
   /** Highest egg-owner sequence applied; older updates are ignored. */
   private eggSeq = 0;
   /** Last claim sent per claimer, to throttle claims while touching. */
@@ -1935,7 +1942,12 @@ export class GameScene extends Phaser.Scene {
         // logic reads gsPlayers) — never through the zustand store, which would re-render
         // React on every 30Hz packet (the choppiness/lag the non-host client suffered).
         const gp = this.gsPlayers.find((p) => p.id === id);
-        if (gp) { gp.x = payload.x; gp.y = payload.y; }
+        if (gp) {
+          // A big jump is a teleport: snap the sprite rather than slide it across the map.
+          if (Math.hypot(payload.x - gp.x, payload.y - gp.y) > 250) this.playerSprites[id]?.setPosition(payload.x, payload.y);
+          gp.x = payload.x;
+          gp.y = payload.y;
+        }
         // Only the shield flag goes to the store/React, and only on change. Egg ownership
         // comes from the server (egg-owner), never from a peer's report.
         this.applyRemoteFlags(id, gp, payload.isInvincible);
@@ -1955,6 +1967,9 @@ export class GameScene extends Phaser.Scene {
       // After a reconnect, resync the egg rather than trusting what we last saw.
       this.onRoomRejoined = (payload: any) => { if (payload?.egg) this.applyEggOwner(payload.egg); };
       socket.on('room-rejoined', this.onRoomRejoined);
+      // Someone else's power: show it, and feel it if it's an earthquake near us.
+      this.onPowerUsed = (payload: any) => this.applyRemotePower(payload);
+      socket.on('power-used', this.onPowerUsed);
       // Fill-agent positions, broadcast by the authority. Non-authority clients apply
       // them to the matching 'bot-<i>' (same dead-reckoning path as remote humans).
       this.onAgentState = (payload: any) => {
@@ -1998,11 +2013,13 @@ export class GameScene extends Phaser.Scene {
         if (this.onEggOwner) socket.off('egg-owner', this.onEggOwner);
         if (this.onMatchResult) socket.off('match-result', this.onMatchResult);
         if (this.onRoomRejoined) socket.off('room-rejoined', this.onRoomRejoined);
+        if (this.onPowerUsed) socket.off('power-used', this.onPowerUsed);
         if (this.onAgentState) socket.off('agent-state', this.onAgentState);
         this.onRemoteInput = undefined;
         this.onEggOwner = undefined;
         this.onMatchResult = undefined;
         this.onRoomRejoined = undefined;
+        this.onPowerUsed = undefined;
         this.onAgentState = undefined;
         this.netBound = false;
       });
@@ -3176,6 +3193,7 @@ export class GameScene extends Phaser.Scene {
         ? 0xa78bfa
         : 0xffffff;
     audioManager.play('power-use');
+    this.broadcastPower(player, pu.type);
     this.spawnPulse(player.x, player.y, baseColor, 24, 76, 0.5, 260);
     this.spawnSparkBurst(player.x, player.y, baseColor, 8, 72, 260);
     this.spawnPowerLabel(player, pu.name.toUpperCase(), '#dbeafe');
@@ -3316,6 +3334,58 @@ export class GameScene extends Phaser.Scene {
       speedBoostActive: false,
       isInvincible: false,
     });
+  }
+
+  /** Online: tell the room we (or a bot we steer) just used a power. */
+  private broadcastPower(player: Player, type: string) {
+    if (!this.isOnlineMp || !this.roomCode) return;
+    const mine = player.id === 'player' || (player.isBot && this.agentAuthority);
+    if (!mine) return;
+    const socket = getGameSocket();
+    const userId = player.id === 'player' ? this.localUserId : player.userId;
+    if (!socket || !userId) return;
+    socket.emit('power-used', { roomCode: this.roomCode, userId, type, x: Math.round(player.x), y: Math.round(player.y) });
+  }
+
+  /**
+   * Another client's power. Effects on a player are applied by that player's own client
+   * (it owns its movement), so an earthquake slows us here if we're in range, and the
+   * bot-steering client slows its bots. Everyone sees the burst.
+   */
+  private applyRemotePower(payload: any) {
+    if (!payload || typeof payload.userId !== 'string' || payload.userId === this.localUserId) return;
+    const src = this.playerByUserId(payload.userId);
+    const x = typeof payload.x === 'number' ? payload.x : src?.x;
+    const y = typeof payload.y === 'number' ? payload.y : src?.y;
+    if (x === undefined || y === undefined) return;
+    const color = POWER_COLOR[payload.type] ?? 0xffffff;
+    this.spawnPulse(x, y, color, 24, 76, 0.5, 260);
+    this.spawnSparkBurst(x, y, color, 8, 72, 260);
+    if (src) {
+      this.spawnPowerLabel(src, src.character.powerUp.name.toUpperCase(), '#dbeafe');
+      if (payload.type === 'speed-boost' || payload.type === 'shield' || payload.type === 'teleport') {
+        this.attachPowerAura(src.id, color);
+        const ms = payload.type === 'teleport' ? 650 : src.character.powerUp.duration;
+        this.time.delayedCall(ms, () => this.removePowerAura(src.id));
+      }
+    }
+    if (payload.type !== 'earthquake') return;
+    this.spawnPulse(x, y, 0xf97316, 40, 180, 0.5, 500);
+    const until = Date.now() + 3000;
+    const store = useGameStore.getState();
+    const hit = (p: Player) => {
+      if (p.userId === payload.userId || Math.hypot(p.x - x, p.y - y) >= 250) return;
+      p.slowedUntil = until;
+      store.updatePlayer(p.id, { slowedUntil: until });
+      this.spawnSparkBurst(p.x, p.y, 0xf97316, 10, 80, 300);
+    };
+    const me = this.gsPlayers.find((p) => p.id === 'player');
+    if (me) {
+      const wasSlowed = (me.slowedUntil ?? 0) > Date.now();
+      hit(me);
+      if (!wasSlowed && (me.slowedUntil ?? 0) > Date.now()) this.cameras.main.shake(400, 0.005);
+    }
+    if (this.agentAuthority) for (const b of this.gsPlayers) if (b.isBot) hit(b);
   }
 
   private endGame(result?: { winnerUserId: string | null; stats?: Array<{ userId: string; grabs: number; heldMs: number }> }) {

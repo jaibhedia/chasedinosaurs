@@ -543,6 +543,18 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     else socket.emit('egg-owner', match.owner());
   });
 
+  /** A player (or a bot someone steers) used a power: relay it so everyone sees and feels it. */
+  socket.on('power-used', (payload: any) => {
+    const rc = payload?.roomCode;
+    if (!isRoomMember(socket, rc)) return;
+    if (!rateOk(`${socket.id}:power`, 12, 1000)) return;
+    const userId = cleanStr(payload.userId, 64);
+    if (userId !== socket.data.userId && !userId.startsWith('agent_')) return;
+    const type = cleanStr(payload.type, 16);
+    if (!['speed-boost', 'earthquake', 'shield', 'teleport'].includes(type)) return;
+    socket.to(rc).emit('power-used', { userId, type, x: cleanNum(payload.x, -1e5, 1e5), y: cleanNum(payload.y, -1e5, 1e5) });
+  });
+
   /** Clock sync: clients estimate their offset from the server's clock. */
   socket.on('time-sync', (_t0: unknown, ack?: (now: number) => void) => {
     if (typeof ack === 'function') ack(Date.now());
