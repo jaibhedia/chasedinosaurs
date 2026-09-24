@@ -19,15 +19,13 @@ export function Minimap({ isMobile = false }: { isMobile?: boolean }) {
   const sx = W / minimap.w;
   const sy = H / minimap.h;
 
-  // Desktop: full size, bottom-right. Touch: compact, top-right (below the menu + voice
-  // buttons), out of both thumb zones.
+  // Desktop: full size, bottom-right. Touch: compact, top-right just left of the menu
+  // button, clear of the joystick (bottom-right) and the power button (bottom-left).
   const wrapCls = isMobile
-    ? 'pointer-events-none fixed top-32 z-[54] px-panel p-1'
+    ? 'pointer-events-none fixed top-3 z-[54] px-panel p-1'
     : 'pointer-events-none fixed bottom-6 right-6 z-[55] px-panel p-2';
-  // Touch: offset from the right edge by the safe-area inset so the compact minimap
-  // clears the notch/rounded corner and stays aligned under the menu + voice buttons.
   const wrapStyle = isMobile
-    ? { right: 'calc(env(safe-area-inset-right, 0px) + 0.5rem)' }
+    ? { right: 'calc(env(safe-area-inset-right, 0px) + 4.75rem)' }
     : undefined;
 
   return (

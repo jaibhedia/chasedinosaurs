@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /game
+Disallow: /results
+
+Sitemap: https://chasedinosaurs.fun/sitemap.xml

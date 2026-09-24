@@ -2,13 +2,19 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-// In production the game is bundled into the Next shell's `public/game-app/` and
-// served from the `/game-app/` sub-path (single-domain deploy), so assets must
-// resolve under that prefix. In dev it runs standalone at the server root.
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },
-  base: mode === 'production' ? '/game-app/' : '/',
-}));
+  build: {
+    rollupOptions: {
+      output: {
+        // Phaser is most of the bundle and changes rarely; its own chunk means a
+        // menu-only update doesn't make returning players re-download it.
+        manualChunks: { phaser: ['phaser'] },
+      },
+    },
+    chunkSizeWarningLimit: 1600,
+  },
+});

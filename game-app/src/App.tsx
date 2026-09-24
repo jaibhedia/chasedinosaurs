@@ -1,76 +1,57 @@
-import { useEffect, useState } from 'react';
-import { useGameStore } from '@/store/gameStore';
-import { Game } from '@/components/Game';
+import { lazy, Suspense, useEffect } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { SocketProvider } from '@/providers/SocketProvider';
+import LandscapePrompt from '@/components/LandscapePrompt';
+import { audioManager } from '@/utils/audioManager';
+import Home from '@/screens/Home';
+import ModeSelect from '@/screens/ModeSelect';
+import SoloSetup from '@/screens/SoloSetup';
+import Lobby from '@/screens/Lobby';
+import Results from '@/screens/Results';
+import { Privacy, Terms } from '@/screens/Legal';
 
-// Prod default = '' → same-origin relative paths (the Next shell hosts this game on
-// the same domain); dev default = the Next dev server. Override via VITE_LANDING_URL.
-const LANDING_URL = import.meta.env.VITE_LANDING_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:3000');
+// Phaser is most of the download; the menus shouldn't wait for it.
+const PlayScreen = lazy(() => import('@/screens/PlayScreen'));
+
+/** Reading the legal pages in portrait is fine; everything else is landscape-only. */
+const PORTRAIT_OK = new Set(['/privacy', '/terms']);
 
 export default function App() {
-  const [ready, setReady] = useState(false);
-  const { selectedCharacter, selectedMap } = useGameStore();
+  const location = useLocation();
 
   useEffect(() => {
-    // The Next shell hands off the config via the URL hash (works cross-origin in
-    // dev where the shell is on :3000 and this game is on :5173). Fall back to
-    // localStorage for the same-origin production build.
-    const readConfig = (): any | null => {
-      const m = window.location.hash.match(/[#&]config=([^&]+)/);
-      if (m) {
-        try {
-          const cfg = JSON.parse(decodeURIComponent(m[1]));
-          try { localStorage.setItem('chase-game-config', JSON.stringify(cfg)); } catch { /* ignore */ }
-          // Config via the hash = a fresh launch from the menus (not a refresh), so
-          // drop any old in-progress snapshot — this is a NEW game.
-          try { localStorage.removeItem('chase-game-snapshot'); } catch { /* ignore */ }
-          // Strip the hash so a manual refresh doesn't replay stale config.
-          history.replaceState(null, '', window.location.pathname + window.location.search);
-          return cfg;
-        } catch { /* fall through */ }
-      }
-      const raw = localStorage.getItem('chase-game-config');
-      if (raw) { try { return JSON.parse(raw); } catch { /* ignore */ } }
-      return null;
-    };
-
-    const config = readConfig();
-    if (!config) {
-      window.location.href = LANDING_URL || '/';
-      return;
-    }
-    useGameStore.setState({
-      gameMode: config.gameMode,
-      selectedCharacter: config.selectedCharacter,
-      selectedMap: config.selectedMap,
-      userId: config.userId,
-      serverStartTime: config.serverStartTime ?? null,
-      roomPlayers: config.roomPlayers ?? [],
-      roomCode: config.roomCode ?? null,
-      // Travels with the config rather than being inlined at build time, so one
-      // NEXT_PUBLIC_SOCKET_URL configures both the shell and the game.
-      socketUrl: config.socketUrl ?? null,
-      multiplayerHiddenFill: config.multiplayerHiddenFill ?? false,
-    });
-    setReady(true);
+    audioManager.init();
   }, []);
-
-  if (!ready || !selectedCharacter || !selectedMap) return null;
-
-  const handleGameEnd = () => {
-    const { winner, players, gameMessage } = useGameStore.getState();
-    // localStorage is per-origin, so in dev (game on :5173, results on :3000) the hash
-    // is the only channel that crosses.
-    const result = JSON.stringify({ winner, players, gameMessage });
-    // Same cross-origin handoff as the inbound config: pass via URL hash, keep
-    // localStorage as the same-origin fallback.
-    try { localStorage.setItem('chase-game-result', result); } catch { /* ignore */ }
-    window.location.href = `${LANDING_URL}/results#result=${encodeURIComponent(result)}`;
-  };
 
   return (
     <SocketProvider>
-      <Game onGameEnd={handleGameEnd} />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/play" element={<ModeSelect />} />
+        <Route path="/solo" element={<SoloSetup />} />
+        <Route path="/lobby" element={<Lobby />} />
+        <Route path="/join/:code" element={<Lobby />} />
+        <Route
+          path="/game"
+          element={
+            <Suspense fallback={<div className="h-[100dvh] w-full bg-[#14141f]" />}>
+              <PlayScreen />
+            </Suspense>
+          }
+        />
+        <Route path="/results" element={<Results />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        {/* Links from the old site. */}
+        <Route path="/mode-selection" element={<Navigate to="/play" replace />} />
+        <Route path="/character-selection" element={<Navigate to="/solo" replace />} />
+        <Route path="/map-selection" element={<Navigate to="/solo" replace />} />
+        <Route path="/multiplayer-lobby" element={<Navigate to="/lobby" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      {!PORTRAIT_OK.has(location.pathname) && <LandscapePrompt />}
+      {/* Faint CRT scanlines over everything. */}
+      <div className="scanlines" aria-hidden="true" />
     </SocketProvider>
   );
 }

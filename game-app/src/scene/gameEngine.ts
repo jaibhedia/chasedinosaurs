@@ -31,7 +31,6 @@ export async function initializeGame(container: HTMLElement, serverStartTime?: n
   }
 
   if (gameMode === 'single-player') {
-    store.lockedCharacters.forEach((charId: string) => store.unlockCharacter(charId));
     store.setRoomPlayers([]);
   }
 
@@ -78,6 +77,8 @@ export async function initializeGame(container: HTMLElement, serverStartTime?: n
 
   const game = new Phaser.Game(config);
   activeGame = game;
+  // Dev-only handle for automated browser tests and poking around in the console.
+  if (import.meta.env.DEV) (window as unknown as { __chaseGame?: Phaser.Game }).__chaseGame = game;
 
   game.scene.start('GameScene', {
     mapId: selectedMap.id,
@@ -95,12 +96,5 @@ export async function initializeGame(container: HTMLElement, serverStartTime?: n
     if (activeGame === game) activeGame = null;
 
     useGameStore.getState().setMultiplayerHiddenFill(false);
-
-    if (gameMode === 'single-player') {
-      const currentStore = useGameStore.getState();
-      currentStore.lockedCharacters.forEach((charId: string) => {
-        currentStore.unlockCharacter(charId);
-      });
-    }
   };
 }

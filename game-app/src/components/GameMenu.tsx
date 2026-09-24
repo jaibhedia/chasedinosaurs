@@ -1,36 +1,54 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { Play, RotateCcw, Users, Home, Music, Volume2, VolumeX } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '@/store/gameStore';
+import { useSocket } from '@/providers/SocketProvider';
 import { audioManager } from '@/utils/audioManager';
-
-// '' in prod → same-origin relative paths; the Next dev server in dev.
-const LANDING = import.meta.env.VITE_LANDING_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:3000');
+import { clearMatchConfig } from '@/lib/matchConfig';
 
 /**
  * In-game pause menu. It's shown whenever the store is `paused` (the HUD ☰ button
  * sets that), so opening the menu also freezes the simulation in gameScene.update().
  */
 export default function GameMenu() {
+  const navigate = useNavigate();
+  const { leaveRoom } = useSocket();
   const paused = useGameStore((s) => s.paused);
   const setPaused = useGameStore((s) => s.setPaused);
+  const gameMode = useGameStore((s) => s.gameMode);
   const [muted, setMuted] = useState(audioManager.isMuted);
   const [musicOn, setMusicOn] = useState(true);
   const toggleMute = () => { audioManager.toggleMute(); setMuted(audioManager.isMuted); };
   const toggleMusic = () => setMusicOn(audioManager.toggleMusic());
 
-  const clear = (keys: string[]) => { try { keys.forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ } };
+  const online = gameMode === 'multiplayer';
 
   const resume = () => setPaused(false);
-  const restart = () => { clear(['chase-game-snapshot']); window.location.reload(); };
-  const toLobby = () => { clear(['chase-game-snapshot', 'chase-game-config']); window.location.href = `${LANDING}/multiplayer-lobby`; };
-  const toMenu = () => { clear(['chase-game-snapshot', 'chase-game-config']); window.location.href = LANDING || '/'; };
+  // Leaving a room mid-match hands your seat back rather than holding it for 30s.
+  const exit = (to: string) => {
+    setPaused(false);
+    if (online) {
+      leaveRoom();
+      useGameStore.getState().setRoomCode(null);
+    }
+    clearMatchConfig();
+    useGameStore.getState().resetMatch();
+    navigate(to, { replace: true });
+  };
+  const restart = () => {
+    setPaused(false);
+    try { localStorage.removeItem('chase-game-snapshot'); } catch { /* fresh match */ }
+    useGameStore.getState().resetMatch();
+    navigate('/game', { replace: true });
+  };
 
   const items: Array<{ label: string; icon: typeof Play; onClick: () => void; tone: string }> = [
     { label: 'Resume', icon: Play, onClick: resume, tone: '#6ab04c' },
-    { label: 'Restart match', icon: RotateCcw, onClick: restart, tone: '#5fcde4' },
-    { label: 'Lobby', icon: Users, onClick: toLobby, tone: '#ffc93c' },
-    { label: 'Main menu', icon: Home, onClick: toMenu, tone: '#e8503a' },
+    // A room's match can't be restarted by one player.
+    ...(online ? [] : [{ label: 'Restart match', icon: RotateCcw, onClick: restart, tone: '#5fcde4' }]),
+    ...(online ? [{ label: 'Leave to lobby', icon: Users, onClick: () => exit('/lobby'), tone: '#ffc93c' }] : []),
+    { label: 'Main menu', icon: Home, onClick: () => exit('/'), tone: '#e8503a' },
   ];
 
   return (

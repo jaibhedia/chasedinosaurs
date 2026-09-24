@@ -4,7 +4,6 @@ import { useGameStore } from '@/store/gameStore';
 import GameCanvas from '@/components/GameCanvas';
 import GameHUD from '@/components/GameHUD';
 import MobileControls from '@/components/MobileControls';
-import LandscapePrompt from '@/components/LandscapePrompt';
 import ConnectionStatus from '@/components/ConnectionStatus';
 import VoiceChat from '@/components/VoiceChat';
 import GameMenu from '@/components/GameMenu';
@@ -87,7 +86,6 @@ export function Game({ onGameEnd }: GameProps) {
       className="h-screen h-[100dvh] w-screen overflow-hidden relative touch-none"
       style={{ touchAction: 'none', background: '#14141f' }}
     >
-      <LandscapePrompt />
       <NetStats />
       <GameHUD />
       <ConnectionStatus />

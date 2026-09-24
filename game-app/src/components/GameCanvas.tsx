@@ -1,37 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { initializeGame } from '@/scene/gameEngine';
-import { useSocket } from '@/providers/SocketProvider';
 
 export default function GameCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { selectedMap, gameMode, serverStartTime, setPlayers } = useGameStore();
-  const { socket } = useSocket();
-
-  useEffect(() => {
-    if (gameMode !== 'multiplayer' || !socket) return;
-
-    const handleGameStateUpdate = ({ players: serverPlayers }: any) => {
-      if (useGameStore.getState().multiplayerHiddenFill) return;
-      if (serverPlayers && Array.isArray(serverPlayers)) {
-        setPlayers(serverPlayers);
-      }
-    };
-
-    const handlePlayerUpdate = ({ playerId, position, state }: any) => {
-      if (useGameStore.getState().multiplayerHiddenFill) return;
-      const store = useGameStore.getState();
-      store.updatePlayer(playerId, { ...position, ...state });
-    };
-
-    socket.on('game-state-update', handleGameStateUpdate);
-    socket.on('player-update', handlePlayerUpdate);
-
-    return () => {
-      socket.off('game-state-update', handleGameStateUpdate);
-      socket.off('player-update', handlePlayerUpdate);
-    };
-  }, [socket, gameMode, setPlayers]);
+  const { selectedMap, gameMode, serverStartTime } = useGameStore();
 
   useEffect(() => {
     const container = containerRef.current;

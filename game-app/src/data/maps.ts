@@ -1,25 +1,16 @@
 import { GameMap } from '@/store/gameStore';
 
+/**
+ * Arenas. There is one for now: every earlier "map" rendered this same grassland, so
+ * offering a choice between three names was offering no choice at all. New arenas get
+ * added here once they have their own art and layout.
+ */
 export const gameMaps: GameMap[] = [
   {
     id: 'map-1',
-    name: 'Office Space',
-    description: 'An expansive office with cubicles and desks',
-    width: 1600,
-    height: 1000,
-  },
-  {
-    id: 'map-2',
     name: 'Summer Plains',
-    description: 'Open plains with long sightlines and scattered cover',
+    description: 'Open grassland with tree groves, bushes and long sightlines',
     width: 2200,
-    height: 1200,
-  },
-  {
-    id: 'map-3',
-    name: 'Inferno Keep',
-    description: 'Lava-forged ruins stitched from your asset references',
-    width: 2100,
     height: 1200,
   },
 ];

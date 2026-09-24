@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 
 export type GameMode = 'single-player' | 'multiplayer';
+/** Solo bot strength. Multiplayer fill-bots always play on 'normal'. */
+export type Difficulty = 'easy' | 'normal' | 'hard';
 export type GamePhase = 'countdown' | 'playing' | 'ended';
 export type PowerUpType = 'speed-boost' | 'earthquake' | 'shield' | 'teleport';
 
@@ -99,6 +101,15 @@ export interface GameObject {
 }
 
 const USER_ID_STORAGE_KEY = 'chaseUserId';
+const DIFFICULTY_STORAGE_KEY = 'chase-difficulty';
+
+function readDifficulty(): Difficulty {
+  try {
+    const v = localStorage.getItem(DIFFICULTY_STORAGE_KEY);
+    if (v === 'easy' || v === 'normal' || v === 'hard') return v;
+  } catch { /* storage blocked */ }
+  return 'normal';
+}
 
 function generateGuestId(): string {
   const rand = Math.random().toString(36).slice(2, 11);
@@ -110,7 +121,7 @@ interface GameState {
   gameMode: GameMode | null;
   selectedCharacter: Character | null;
   selectedMap: GameMap | null;
-  lockedCharacters: string[];
+  difficulty: Difficulty;
   gamePhase: GamePhase;
   players: Player[];
   gameObjects: GameObject[];
@@ -124,11 +135,6 @@ interface GameState {
   serverStartTime: number | null;
   roomPlayers: any[];
   roomCode: string | null;
-  /** Socket server origin, handed over by the Next shell at launch. Null when the game
-   *  is opened standalone, in which case SocketProvider falls back to VITE_SOCKET_URL
-   *  and then localhost. Kept out of the bundle at build time on purpose — see
-   *  resolveSocketUrl(). */
-  socketUrl: string | null;
   multiplayerHiddenFill: boolean;
   /** In-game menu open → freeze the simulation. */
   paused: boolean;
@@ -140,6 +146,7 @@ interface GameState {
   setGameMode: (mode: GameMode) => void;
   setCharacter: (character: Character) => void;
   setMap: (map: GameMap) => void;
+  setDifficulty: (difficulty: Difficulty) => void;
   setGamePhase: (phase: GamePhase) => void;
   setPlayers: (players: Player[]) => void;
   updatePlayer: (id: string, updates: Partial<Player>) => void;
@@ -155,8 +162,8 @@ interface GameState {
   setMinimap: (minimap: { w: number; h: number; dots: MinimapDot[] }) => void;
   setEgg: (ownerId: string | null, position: { x: number; y: number } | null) => void;
   setLastEggHolderId: (id: string | null) => void;
-  lockCharacter: (characterId: string) => void;
-  unlockCharacter: (characterId: string) => void;
+  /** Clear everything about the last match, keeping who you are and what you picked. */
+  resetMatch: () => void;
   resetGame: () => void;
 }
 
@@ -165,7 +172,6 @@ const initialState = {
   gameMode: null,
   selectedCharacter: null,
   selectedMap: null,
-  lockedCharacters: [] as string[],
   gamePhase: 'countdown' as GamePhase,
   players: [],
   gameObjects: [],
@@ -179,14 +185,30 @@ const initialState = {
   serverStartTime: null,
   roomPlayers: [],
   roomCode: null,
-  socketUrl: null,
   multiplayerHiddenFill: false,
+  paused: false,
+  minimap: { w: 0, h: 0, dots: [] as MinimapDot[] },
+};
+
+/** Per-match fields: cleared between matches, unlike identity and menu choices. */
+const matchState = {
+  gamePhase: 'countdown' as GamePhase,
+  players: [] as Player[],
+  gameObjects: [] as GameObject[],
+  timeRemaining: 120,
+  countdownTimer: 3,
+  eggOwnerId: null as string | null,
+  eggPosition: null as { x: number; y: number } | null,
+  lastEggHolderId: null as string | null,
+  winner: null as Player | null,
+  gameMessage: '',
   paused: false,
   minimap: { w: 0, h: 0, dots: [] as MinimapDot[] },
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
   ...initialState,
+  difficulty: readDifficulty(),
 
   setUserId: (id) => set({ userId: id }),
   initUserId: () => {
@@ -204,6 +226,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setGameMode: (mode) => set({ gameMode: mode }),
   setCharacter: (character) => set({ selectedCharacter: character }),
   setMap: (map) => set({ selectedMap: map }),
+  setDifficulty: (difficulty) => {
+    try { localStorage.setItem(DIFFICULTY_STORAGE_KEY, difficulty); } catch { /* storage blocked */ }
+    set({ difficulty });
+  },
   setGamePhase: (phase) => set({ gamePhase: phase }),
   setPlayers: (players) => set({ players }),
   updatePlayer: (id, updates) =>
@@ -223,13 +249,6 @@ export const useGameStore = create<GameState>((set, get) => ({
   setMinimap: (minimap) => set({ minimap }),
   setEgg: (ownerId, position) => set({ eggOwnerId: ownerId, eggPosition: position }),
   setLastEggHolderId: (id) => set({ lastEggHolderId: id }),
-  lockCharacter: (characterId) =>
-    set((state) => ({
-      lockedCharacters: [...state.lockedCharacters, characterId],
-    })),
-  unlockCharacter: (characterId) =>
-    set((state) => ({
-      lockedCharacters: state.lockedCharacters.filter((id) => id !== characterId),
-    })),
-  resetGame: () => set({ ...initialState, userId: get().userId }),
+  resetMatch: () => set({ ...matchState }),
+  resetGame: () => set({ ...initialState, userId: get().userId, difficulty: get().difficulty }),
 }));

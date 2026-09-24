@@ -1,41 +1,180 @@
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* {
-  box-sizing: border-box;
-  border-radius: 0 !important;
-  image-rendering: pixelated;
+/*
+  16-BIT ADVENTURE pixel-art theme.
+  Palette: sky #5FCDE4 · grass #6AB04C · earth #C97B3C · cream #F4E7C3
+           sun #FFC93C · danger #E8503A · ink #2B2B45
+  Dark base so chunky panels + sun-yellow accents pop. Sharp corners everywhere.
+  Fonts are bundled (@fontsource), so the app renders correctly offline and inside
+  the native shells.
+*/
+@layer base {
+  :root {
+    --font-body: 'VT323';
+    --font-heading: 'Press Start 2P';
+
+    --background: 240 26% 11%;
+    --foreground: 44 46% 92%;
+    --primary: 102 40% 49%;
+    --primary-foreground: 110 45% 10%;
+    --border: 240 14% 32%;
+    --ring: 43 100% 62%;
+
+    --wood-bg: #804d2e;
+    --wood-light: #b3734a;
+    --wood-dark: #4d2813;
+    --wood-ink: #261309;
+    --wood-text: #f4e7c3;
+
+    --sky: #5fcde4;
+    --grass: #6ab04c;
+    --earth: #c97b3c;
+    --cream: #f4e7c3;
+    --sun: #ffc93c;
+    --danger: #e8503a;
+    --ink: #1a1a2b;
+    --ink-line: #11111c;
+  }
+
+  * {
+    box-sizing: border-box;
+    border-radius: 0 !important;
+    image-rendering: pixelated;
+  }
+
+  html, body, #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    /* Touch-game hardening: no pull-to-refresh or rubber-band, no text selection, no grey
+       tap flash, so dragging the joystick never scrolls the page or selects HUD text. */
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  body {
+    font-family: var(--font-body), monospace;
+    font-size: 1.06rem;
+    letter-spacing: 0.01em;
+    color: #f4e7c3;
+    background-color: #14141f;
+  }
+
+  input, textarea, .select-text, .select-text * {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  img, canvas, video {
+    image-rendering: pixelated;
+  }
+
+  h1, h2, h3, .pixel-heading {
+    font-family: var(--font-heading), monospace;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.35;
+  }
+
+  p, span, button, input, textarea, select, label, a, div, li {
+    font-family: var(--font-body), monospace;
+  }
 }
 
-html, body, #root {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  font-family: "VT323", monospace;
-  /* Touch-game hardening: kill pull-to-refresh / rubber-band, text selection, and the
-     grey tap flash so dragging the joystick never scrolls the page or selects HUD text. */
-  overscroll-behavior: none;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  -webkit-touch-callout: none;
+@layer utilities {
+  .font-body { font-family: var(--font-body), monospace; }
+  .pixel-font,
+  .font-heading {
+    font-family: var(--font-heading), monospace;
+    letter-spacing: 0.04em;
+  }
+
+  .adventure-bg {
+    background-color: #2b1d16;
+    background-image:
+      radial-gradient(circle at 20% 18%, rgba(250, 204, 21, 0.08), transparent 40%),
+      radial-gradient(circle at 80% 14%, rgba(106, 176, 76, 0.08), transparent 40%),
+      radial-gradient(circle at 75% 86%, rgba(200, 100, 50, 0.08), transparent 38%),
+      linear-gradient(180deg, #1d120c 0%, #2b1d16 100%);
+  }
+  .pixel-grid {
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+  /* Solid warm backdrop with a subtle dither texture. */
+  .px-solid-bg {
+    background-color: #2c1e15;
+    background-image:
+      radial-gradient(rgba(244, 231, 195, 0.05) 1px, transparent 1.5px),
+      radial-gradient(rgba(0, 0, 0, 0.12) 1px, transparent 1.5px);
+    background-size: 12px 12px, 12px 12px;
+    background-position: 0 0, 6px 6px;
+  }
 }
 
-:root {
-  --wood-bg: #804d2e;
-  --wood-light: #b3734a;
-  --wood-dark: #4d2813;
-  --wood-ink: #261309;
-  --wood-text: #f4e7c3;
+/* ---- Menu chrome (wood theme from the Ninja Adventure pack) ---- */
+.pixel-border {
+  border: 4px solid var(--wood-ink);
+  box-shadow:
+    inset 4px 4px 0 0 var(--wood-light),
+    inset -4px -4px 0 0 var(--wood-dark);
 }
 
-/* 16-bit Adventure pixel chrome for the in-game HUD (matches the Next shell). */
-.px-heading { font-family: "Press Start 2P", monospace; letter-spacing: 0.04em; }
-.px-body { font-family: "VT323", monospace; }
+.pixel-panel {
+  background: var(--wood-bg);
+  border: 4px solid var(--wood-ink);
+  color: var(--wood-text);
+  box-shadow:
+    inset 4px 4px 0 0 var(--wood-light),
+    inset -4px -4px 0 0 var(--wood-dark),
+    8px 8px 0 0 rgba(0, 0, 0, 0.4);
+}
+
+.pixel-button {
+  background: var(--wood-bg);
+  border: 4px solid var(--wood-ink);
+  color: var(--wood-text) !important;
+  box-shadow:
+    inset 4px 4px 0 0 var(--wood-light),
+    inset -4px -4px 0 0 var(--wood-dark);
+  text-transform: uppercase;
+  font-family: var(--font-heading), monospace;
+  transition: transform 0.1s, background 0.1s;
+  cursor: pointer;
+}
+.pixel-button:hover { background: #965a36; }
+.pixel-button:active {
+  box-shadow:
+    inset 4px 4px 0 0 var(--wood-dark),
+    inset -4px -4px 0 0 var(--wood-light);
+  transform: translateY(4px);
+}
+.pixel-button:disabled {
+  background: #595959;
+  border-color: #222222;
+  box-shadow: inset 4px 4px 0 0 #777777, inset -4px -4px 0 0 #333333;
+  color: #aaaaaa !important;
+  pointer-events: none;
+}
+
+.pixel-shadow { text-shadow: 3px 3px 0 #11111c; }
+.title-pixel {
+  color: var(--sun);
+  text-shadow: 4px 4px 0 #11111c, -1px -1px 0 #11111c;
+}
+
+/* ---- In-game HUD chrome ---- */
+.px-heading { font-family: var(--font-heading), monospace; letter-spacing: 0.04em; }
+.px-body { font-family: var(--font-body), monospace; }
 
 .px-panel {
   background: var(--wood-bg);
@@ -52,16 +191,9 @@ html, body, #root {
 .px-shadow { text-shadow: 3px 3px 0 #11111c; }
 
 /**
- * In-play HUD variant of the wood chips and panels.
- *
- * The menu styling is deliberately heavy — solid wood, 3–4px borders, inset bevels —
- * which reads well on a menu and badly over a live game, where the top row of panels
- * walls off a strip of the world the player is trying to move through. This keeps the
- * same pixel language but lets the arena show through, and thins the bevel so the panel
- * stops competing with the sprites.
- *
- * Applied alongside .px-chip / .px-panel, so removing it anywhere restores the solid
- * menu look with no other change.
+ * In-play variant of the wood chips and panels. The menu styling is deliberately heavy,
+ * which walls off the arena during play; this keeps the pixel language but lets the
+ * world show through. Applied alongside .px-chip / .px-panel.
  */
 .hud-lite {
   background: color-mix(in srgb, var(--wood-bg) 70%, transparent);
@@ -72,7 +204,7 @@ html, body, #root {
   backdrop-filter: blur(2px);
 }
 
-/* Subtle CRT scanlines over the game (lighter than the menus to keep play clear). */
+/* Faint CRT scanlines. Never darkens content enough to matter. */
 .scanlines {
   position: fixed;
   inset: 0;
@@ -80,12 +212,11 @@ html, body, #root {
   pointer-events: none;
   background: repeating-linear-gradient(
     to bottom,
-    rgba(0,0,0,0.14) 0px,
-    rgba(0,0,0,0.14) 1px,
+    rgba(0,0,0,0.10) 0px,
+    rgba(0,0,0,0.10) 1px,
     transparent 1px,
     transparent 3px
   );
-  mix-blend-mode: multiply;
-  opacity: 0.4;
+  opacity: 0.35;
 }
-@media (prefers-reduced-motion: reduce) { .scanlines { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .scanlines { opacity: 0.2; } }
