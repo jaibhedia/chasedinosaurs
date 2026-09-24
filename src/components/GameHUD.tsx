@@ -87,7 +87,10 @@ export default function GameHUD() {
               <span className="px-heading text-[7px] uppercase tracking-[0.2em] text-[#9fb0d8] sm:text-[8px]">
                 Time left
               </span>
-              <span className="px-heading text-base tabular-nums sm:text-xl" style={{ color: '#ffc93c', textShadow: '2px 2px 0 #11111c' }}>
+              <span
+                className={`px-heading text-base tabular-nums sm:text-xl ${timeRemaining > 0 && timeRemaining <= 10 ? 'animate-pulse' : ''}`}
+                style={{ color: timeRemaining > 0 && timeRemaining <= 10 ? '#e8503a' : '#ffc93c', textShadow: '2px 2px 0 #11111c' }}
+              >
                 {formatMatchTime(timeRemaining)}
               </span>
             </div>

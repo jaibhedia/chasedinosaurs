@@ -2,6 +2,8 @@ import * as Phaser from 'phaser';
 import { useGameStore, Player, GameObject, AgentIntent, MinimapDot } from '@/store/gameStore';
 import { characters } from '@/data/characters';
 import { audioManager } from '@/utils/audioManager';
+import { buzz } from '@/lib/haptics';
+import { cannedLine, type VoiceEvent } from './botVoice';
 import { PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, GAME_DURATION, checkCollision, findCollider, findSafeSpawnPosition } from './gameShared';
 import { getGameSocket, getServerOffset } from '@/lib/socketBridge';
 import { TUNING, PERSONAS, PERSONA_SPEED, assignRoles, ramp, type BotTuning, type Role } from './botTactics';
@@ -15,10 +17,9 @@ const CHAR_SPRITES: Record<string, { name: string }> = {
 };
 
 const SPRITE_SCALE = 4;
-/** How often the client asks the server's LLM for fresh agent intents (slow tier).
- *  The LLM only sets strategy at this cadence; per-frame steering stays local, so it
- *  only needs to refresh high-level strategy/taunts occasionally. */
-const AGENT_TICK_MS = 5000;
+/** At most one bot line this often, and each bot at most once per BOT_VOICE_EACH_MS. */
+const BOT_VOICE_GAP_MS = 3500;
+const BOT_VOICE_EACH_MS = 7000;
 /**
  * How long a non-authority client waits on silence before steering the bots itself.
  *
@@ -179,10 +180,12 @@ export class GameScene extends Phaser.Scene {
   private onWinBlur?: () => void;
   private onWinVisibility?: () => void;
 
-  // --- LLM agent brains (slow tier) ---
-  private agentNetBound = false;
-  private lastAgentTick = 0;
-  private onAgentIntents?: (payload: any) => void;
+  // --- Bot voice (see botVoice.ts and server/src/botVoice.ts) ---
+  private lastVoiceAt = 0;
+  private botVoiceAt: Record<string, number> = {};
+  private finalCallDone = false;
+  private botCloseAt: Record<string, number> = {};
+  private onBotSaid?: (payload: any) => void;
   /** Throttle for pushing minimap blips to the store (~12Hz). */
   private lastMinimap = 0;
   /** Overhead taunt speech bubbles, keyed by player id (behavior stays in the HUD panel). */
@@ -215,6 +218,8 @@ export class GameScene extends Phaser.Scene {
   private matchEnded = false;
   /** endGame() ran; guards against a late server result firing it again. */
   private gameOver = false;
+  /** A beat of freeze when the egg changes hands with you involved (hit-stop). */
+  private hitStopUntil = 0;
 
   private playerSprites: { [id: string]: Phaser.GameObjects.Container } = {};
   private objSprites: { [id: string]: Phaser.GameObjects.Container } = {};
@@ -343,6 +348,11 @@ export class GameScene extends Phaser.Scene {
 
     this.gameStartTime = this.serverStartTime || Date.now();
     this.botMind = {};
+    this.tauntBubbles = {};
+    this.lastVoiceAt = 0;
+    this.botVoiceAt = {};
+    this.botCloseAt = {};
+    this.finalCallDone = false;
     this.botVel = {};
     this.botLastPos = {};
     this.lastRoleAt = 0;
@@ -390,6 +400,7 @@ export class GameScene extends Phaser.Scene {
     setGamePhase(startPhase);
     setCountdownTimer(startCountdown);
     setTimeRemaining(startTimer);
+    if (startPhase === 'countdown') audioManager.play('beep');
 
     // All maps are the FreeEnviro grassland now. Multiplayer uses FIXED dimensions so
     // every client builds the SAME forest (identical bounds + obstacle layout);
@@ -664,9 +675,6 @@ export class GameScene extends Phaser.Scene {
     // Promote ourselves if whoever was steering the bots has gone silent, so a host
     // dropping mid-match doesn't leave the agents frozen for everyone else.
     this.maybeTakeOverAgents(_time);
-    // Self-gates on the presence of bots. Online MP fills empty seats with agents, so
-    // this runs there too — only the authority emits the tick.
-    this.updateAgentBrains(_time);
     this.updateMinimap(_time);
     this.updateEggArrow();
 
@@ -686,7 +694,9 @@ export class GameScene extends Phaser.Scene {
     // The in-game menu freezes the simulation; sprites below still render so the
     // frozen world stays visible behind the overlay.
     if (!store.paused) {
-      if (this.currentPhase === 'playing') {
+      if (this.currentPhase === 'playing' && Date.now() < this.hitStopUntil) {
+        // Hit-stop: hold the frame for a beat so a steal lands.
+      } else if (this.currentPhase === 'playing') {
         // Time with the egg, for the results table. Online the server's tally replaces it.
         const holding = this.gsPlayers.find((p) => p.hasEgg);
         if (holding) holding.eggHeldMs = (holding.eggHeldMs ?? 0) + Math.min(delta, 250);
@@ -1970,6 +1980,12 @@ export class GameScene extends Phaser.Scene {
       // Someone else's power: show it, and feel it if it's an earthquake near us.
       this.onPowerUsed = (payload: any) => this.applyRemotePower(payload);
       socket.on('power-used', this.onPowerUsed);
+      // A bot's line, chosen by the bot-steering client.
+      this.onBotSaid = (payload: any) => {
+        const bot = typeof payload?.uid === 'string' ? this.gsPlayers.find((p) => p.userId === payload.uid) : undefined;
+        if (bot && typeof payload.line === 'string') this.showTaunt(bot, payload.line.slice(0, 80));
+      };
+      socket.on('bot-said', this.onBotSaid);
       // Fill-agent positions, broadcast by the authority. Non-authority clients apply
       // them to the matching 'bot-<i>' (same dead-reckoning path as remote humans).
       this.onAgentState = (payload: any) => {
@@ -2014,12 +2030,14 @@ export class GameScene extends Phaser.Scene {
         if (this.onMatchResult) socket.off('match-result', this.onMatchResult);
         if (this.onRoomRejoined) socket.off('room-rejoined', this.onRoomRejoined);
         if (this.onPowerUsed) socket.off('power-used', this.onPowerUsed);
+        if (this.onBotSaid) socket.off('bot-said', this.onBotSaid);
         if (this.onAgentState) socket.off('agent-state', this.onAgentState);
         this.onRemoteInput = undefined;
         this.onEggOwner = undefined;
         this.onMatchResult = undefined;
         this.onRoomRejoined = undefined;
         this.onPowerUsed = undefined;
+        this.onBotSaid = undefined;
         this.onAgentState = undefined;
         this.netBound = false;
       });
@@ -2124,7 +2142,11 @@ export class GameScene extends Phaser.Scene {
     if (elapsed < 3) {
       this.currentPhase = 'countdown';
       const cd = Math.max(1, Math.ceil(3 - elapsed));
-      if (cd !== this.countdownTimer) { this.countdownTimer = cd; store.setCountdownTimer(cd); }
+      if (cd !== this.countdownTimer) {
+        this.countdownTimer = cd;
+        store.setCountdownTimer(cd);
+        audioManager.play('beep');
+      }
       return;
     }
 
@@ -2134,10 +2156,17 @@ export class GameScene extends Phaser.Scene {
       this.countdownTimer = 0;
       store.setCountdownTimer(0);
       store.setGamePhase('playing');
+      audioManager.play('go');
     }
 
     const remaining = Math.max(0, Math.ceil(GAME_DURATION - (elapsed - 3)));
-    if (remaining !== this.gameTimer) { this.gameTimer = remaining; store.setTimeRemaining(remaining); }
+    if (remaining !== this.gameTimer) {
+      this.gameTimer = remaining;
+      store.setTimeRemaining(remaining);
+      // The last ten seconds tick, so you can feel the buzzer coming without looking.
+      if (remaining > 0 && remaining <= 10) audioManager.play('tick');
+      if (remaining === 10) this.voiceFinalCall();
+    }
     if (remaining <= 0 && !this.matchEnded) {
       this.matchEnded = true;
       if (this.isOnlineMp) {
@@ -2182,7 +2211,36 @@ export class GameScene extends Phaser.Scene {
       this.eggGraceUntil = payload.graceUntil - getServerOffset();
     }
     this.lastTagTime = Date.now();
-    if (hadEgg?.userId !== payload.ownerUserId) audioManager.play('tag');
+    const holder = this.playerByUserId(payload.ownerUserId);
+    if (holder && hadEgg?.id !== holder.id) this.onEggChanged(holder, hadEgg ?? null);
+  }
+
+  /**
+   * Feedback when the egg changes hands. Big when it's you (you got it / it got taken
+   * from you), a light blip when it's between others.
+   */
+  private onEggChanged(holder: Player, prev: Player | null) {
+    const mine = holder.id === 'player';
+    const lost = prev?.id === 'player';
+    if (mine) {
+      audioManager.play('grab');
+      buzz('medium');
+      this.cameras.main.shake(110, 0.003);
+      this.spawnSparkBurst(holder.x, holder.y - 10, 0xfacc15, 16, 110, 380);
+      this.spawnPowerLabel(holder, 'GOT IT!', '#ffc93c');
+      if (prev) this.hitStopUntil = Date.now() + 70;
+    } else if (lost) {
+      audioManager.play('stolen');
+      buzz('heavy');
+      this.cameras.main.shake(220, 0.007);
+      this.spawnSparkBurst(prev.x, prev.y - 10, 0xe8503a, 12, 90, 320);
+      this.spawnPowerLabel(prev, 'STOLEN!', '#e8503a');
+      this.hitStopUntil = Date.now() + 70;
+    } else {
+      audioManager.play('handoff');
+      this.spawnSparkBurst(holder.x, holder.y - 10, 0xfacc15, 10, 70, 260);
+    }
+    this.voiceEggChange(holder, prev);
   }
 
   /** Apply a networked egg-ownership change: retint the holder, clear everyone else,
@@ -2315,89 +2373,73 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * The "slow tier" of the AI: every AGENT_TICK_MS we ship a compact world snapshot
-   * to the server, which runs ONE LLM inference and returns a high-level
-   * intent per bot. We apply those intents onto gsPlayers; updateBots() executes
-   * them each frame.
-   *
-   * Online MP fills empty seats with agents too, so this runs there as well — but only
-   * the authority client EMITS the tick, so a room runs one inference rather than one
-   * per player. Every client binds the intents listener, so taunts show for everyone
-   * regardless of who is steering.
+   * A bot says something about what just happened. Asks the server's LLM for a line
+   * (about a second's budget) and falls back to a canned one for the bot's persona, so
+   * bots talk offline too. Rate-limited so they don't talk over each other. Online, the
+   * bot-steering client decides the line and shares it with the room.
    */
-  private updateAgentBrains(now: number) {
-    if (!this.gsPlayers.some((p) => p.isBot)) return;
+  private botSay(bot: Player, event: VoiceEvent, target?: string, urgent = false) {
+    if (!bot.isBot || (this.isOnlineMp && !this.agentAuthority)) return;
+    const now = Date.now();
+    if (!urgent && now - this.lastVoiceAt < BOT_VOICE_GAP_MS) return;
+    if (now - (this.botVoiceAt[bot.id] ?? 0) < BOT_VOICE_EACH_MS) return;
+    this.lastVoiceAt = now;
+    this.botVoiceAt[bot.id] = now;
+
+    const show = (line: string) => {
+      if (!this.scene.isActive()) return;
+      this.showTaunt(bot, line);
+      const socket = getGameSocket();
+      if (this.isOnlineMp && socket && this.roomCode && bot.userId) {
+        socket.emit('bot-said', { roomCode: this.roomCode, uid: bot.userId, line });
+      }
+    };
     const socket = getGameSocket();
-    if (!socket) return;
-
-    if (!this.agentNetBound) {
-      this.agentNetBound = true;
-      this.onAgentIntents = (payload: any) => {
-        if (!payload) return;
-        const intents: AgentIntent[] = Array.isArray(payload.intents) ? payload.intents : [];
-        const byId = new Map(intents.map((it) => [it.agentId, it]));
-        const store = useGameStore.getState();
-        const tNow = Date.now();
-        for (const p of this.gsPlayers) {
-          if (!p.isBot) continue;
-          const it = byId.get(p.id);
-          if (!it) continue;
-          // Tactics are decided locally (botTactics.ts); the LLM supplies the voice.
-          if (it.persona) p.persona = it.persona;
-          if (it.taunt) { p.taunt = it.taunt; p.tauntAt = tNow; }
-          if (it.persona || it.taunt) {
-            store.updatePlayer(p.id, {
-              ...(it.persona ? { persona: it.persona } : {}),
-              ...(it.taunt ? { taunt: it.taunt, tauntAt: tNow } : {}),
-            });
-          }
-        }
-      };
-      socket.on('agent-intents', this.onAgentIntents);
-      this.events.once('shutdown', () => {
-        if (this.onAgentIntents) socket.off('agent-intents', this.onAgentIntents);
-        this.onAgentIntents = undefined;
-        this.agentNetBound = false;
-        Object.values(this.tauntBubbles).forEach((b) => b.destroy());
-        this.tauntBubbles = {};
-      });
-    }
-
-    // The intents listener above is bound on EVERY client (so taunts show for all),
-    // but only the authority EMITS the tick — one inference per room,
-    // no duplicate spend. In single-player/hidden-fill the authority is always us.
-    if (this.isOnlineMp && !this.agentAuthority) return;
-
-    const store = useGameStore.getState();
-    const holder = this.gsPlayers.find((p) => p.hasEgg);
-    // Steady cadence only. (An egg-handoff event-tick was tried but it blew past the
-    // testnet rate limit; the local steering already reacts to handoffs instantly.)
-    if (now - this.lastAgentTick >= AGENT_TICK_MS) {
-      this.lastAgentTick = now;
-      const eggPos = store.eggPosition;
-      socket.emit('agent-tick', {
+    if (!socket?.connected) { show(cannedLine(bot.persona, event, target)); return; }
+    socket.timeout(1300).emit(
+      'bot-line',
+      {
         roomCode: this.roomCode || `solo-${this.localUserId || 'anon'}`,
-        map: { w: Math.round(this.mapWidth), h: Math.round(this.mapHeight) },
-        egg: {
-          x: Math.round(eggPos?.x ?? 0),
-          y: Math.round(eggPos?.y ?? 0),
-          holderId: holder ? holder.id : null,
-        },
-        players: this.gsPlayers.map((p) => ({
-          id: p.id,
-          kind: p.isBot ? 'agent' : 'human',
-          x: Math.round(p.x),
-          y: Math.round(p.y),
-          hasEgg: !!p.hasEgg,
-          ...(p.persona ? { persona: p.persona } : {}),
-          // The local player's scene id is the literal string 'player', so userId is
-          // the only stable key that survives the trip. Bots have none.
-          ...(!p.isBot && (p.userId || (p.id === 'player' && this.localUserId))
-            ? { userId: p.userId || this.localUserId }
-            : {}),
-        })),
-      });
+        persona: bot.persona,
+        event,
+        name: bot.character.name,
+        target,
+        secondsLeft: this.gameTimer,
+        holding: !!bot.hasEgg,
+      },
+      (err: unknown, res?: { line?: string | null }) => {
+        show(!err && res?.line ? res.line : cannedLine(bot.persona, event, target));
+      },
+    );
+  }
+
+  private showTaunt(bot: Player, line: string) {
+    bot.taunt = line;
+    bot.tauntAt = Date.now();
+    useGameStore.getState().updatePlayer(bot.id, { taunt: line, tauntAt: bot.tauntAt });
+  }
+
+  /** Bot reactions to the egg changing hands. */
+  private voiceEggChange(holder: Player, prev: Player | null) {
+    if (holder.isBot) this.botSay(holder, prev ? 'steal' : 'grab', prev?.character.name);
+    else if (prev?.isBot) this.botSay(prev, 'lost', holder.character.name);
+  }
+
+  /** Ten seconds left: whoever has the egg, or the closest bot to it, says something. */
+  private voiceFinalCall() {
+    if (this.finalCallDone) return;
+    this.finalCallDone = true;
+    const holder = this.gsPlayers.find((p) => p.hasEgg);
+    let speaker: Player | undefined = holder?.isBot ? holder : undefined;
+    if (!speaker && holder) {
+      let best = Infinity;
+      for (const b of this.gsPlayers) {
+        if (!b.isBot) continue;
+        const d = Math.hypot(b.x - holder.x, b.y - holder.y);
+        if (d < best) { best = d; speaker = b; }
+      }
     }
+    if (speaker) this.botSay(speaker, 'final', holder?.character.name, true);
   }
 
   /** Push a throttled snapshot of world positions to the store for the minimap.
@@ -2485,6 +2527,11 @@ export class GameScene extends Phaser.Scene {
         if (holder && !holder.isInvincible && holder.id !== bot.id && mind.role === 'hunt'
           && Math.hypot(holder.x - bot.x, holder.y - bot.y) < lockOn) {
           aim = { x: holder.x, y: holder.y };
+          // "Right behind you" lines: sometimes, and rarely from the same bot.
+          if (!holder.isBot && now - (this.botCloseAt[bot.id] ?? 0) > 15_000 && Math.random() < 0.02) {
+            this.botCloseAt[bot.id] = now;
+            this.botSay(bot, 'close', holder.character.name);
+          }
         }
         if (aim) this.moveTowards(bot, aim.x, aim.y, speed);
         else this.wander(bot, speed);
@@ -2914,7 +2961,7 @@ export class GameScene extends Phaser.Scene {
             this.lastTagTime = now;
             this.eggGraceUntil = now + EGG_GRACE_MS;
             this.rebuildPlayerSprite(p);
-            audioManager.play('tag');
+            this.onEggChanged(p, null);
             break;
           }
         }
@@ -2992,7 +3039,7 @@ export class GameScene extends Phaser.Scene {
 
         this.rebuildPlayerSprite(holder);
         this.rebuildPlayerSprite(target);
-        audioManager.play('tag');
+        this.onEggChanged(target, holder);
         break;
       }
     }
@@ -3193,6 +3240,7 @@ export class GameScene extends Phaser.Scene {
         ? 0xa78bfa
         : 0xffffff;
     audioManager.play('power-use');
+    if (player.id === 'player') buzz('light');
     this.broadcastPower(player, pu.type);
     this.spawnPulse(player.x, player.y, baseColor, 24, 76, 0.5, 260);
     this.spawnSparkBurst(player.x, player.y, baseColor, 8, 72, 260);

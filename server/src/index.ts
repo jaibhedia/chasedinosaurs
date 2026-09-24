@@ -26,7 +26,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { Server, type Socket } from 'socket.io';
-import { decideIntents, forgetRoom, type AgentSnapshot } from './agents/agentBrain';
+import { botLine, matchRoast } from './botVoice';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
 import { Match } from './match';
 
@@ -94,9 +94,6 @@ function newRoom(mapId: string, isPublic: boolean, host: LobbyPlayer, quick = fa
 /** In-memory room store, keyed by 6-char room code. */
 const rooms = new Map<string, Room>();
 
-/** Rooms with an agent-brain inference in flight — prevents overlapping LLM calls
- *  (and duplicate spend) for the same room. */
-const agentTickInFlight = new Set<string>();
 
 
 function genRoomCode(): string {
@@ -127,7 +124,6 @@ function removePlayer(rc: string, room: Room, uid: string): void {
     if (room.endTimer) clearTimeout(room.endTimer);
     if (room.autoStart) clearTimeout(room.autoStart);
     rooms.delete(rc);
-    forgetRoom(rc);
     return;
   }
   if (room.hostUserId === uid) room.hostUserId = room.players[0].user_id;
@@ -227,9 +223,9 @@ function isRoomMember(socket: Socket<any, any, any, SocketData>, roomCode: unkno
   return !!room && room.players.some((p) => p.user_id === socket.data.userId);
 }
 
-/** Membership guard that also allows a single-player `solo-<userId>` room (which has no
- *  Socket.IO fan-out, so it can't reach anyone else). Used by relay handlers that both
- *  single-player and multiplayer emit (agent-tick). */
+/** Membership guard that also allows a single-player `solo-<userId>` id (which has no
+ *  Socket.IO fan-out, so it can't reach anyone else). Used by requests that both
+ *  single-player and multiplayer make (bot lines, roasts). */
 function canUseRoom(socket: Socket<any, any, any, SocketData>, roomCode: unknown): roomCode is string {
   if (typeof roomCode === 'string' && roomCode.startsWith('solo-')) return true;
   return isRoomMember(socket, roomCode);
@@ -663,31 +659,32 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
   });
 
   /**
-   * Agent-brain tick (the AI-native core). One client per room — the host, or the
-   * solo single-player client — sends a compact world snapshot every few seconds.
-   * We run ONE LLM inference and broadcast the resulting intents to the whole
-   * room so every client drives the agents identically. `agentTickInFlight` guards
-   * against overlapping inference for the same room (and the duplicate spend that
-   * would cause). `source` tells clients whether the LLM actually answered.
+   * A bot has something to say (it just stole the egg, lost it, is closing in, the round
+   * is ending). Answers with one LLM line, or null, in which case the client uses its
+   * own canned line. Solo asks for itself; online, the bot-steering client asks and then
+   * shares the chosen line with bot-said.
    */
-  socket.on('agent-tick', async (snap: AgentSnapshot) => {
-    const rc = snap?.roomCode || socket.data.roomCode;
-    if (!canUseRoom(socket, rc)) return;
-    if (agentTickInFlight.has(rc)) return;
-    agentTickInFlight.add(rc);
-    try {
-      const { intents, source } = await decideIntents({ ...snap, roomCode: rc });
-      const payload = { intents, source, ogEnabled: aiEnabled, aiProvider: aiProviderName };
-      // Reach the requesting client (single-player has no Socket.IO room) AND the
-      // rest of the room (multiplayer), with no duplicate to the sender.
-      socket.emit('agent-intents', payload);
-      socket.to(rc).emit('agent-intents', payload);
-    } catch (err) {
-      console.warn('[ai] agent-tick error:', (err as Error).message);
-      socket.emit('agent-intents', { intents: [], source: 'fallback', ogEnabled: aiEnabled, aiProvider: aiProviderName });
-    } finally {
-      agentTickInFlight.delete(rc);
-    }
+  socket.on('bot-line', async (payload: any, ack?: (res: { line: string | null }) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!canUseRoom(socket, payload?.roomCode) || !rateOk(`${socket.id}:voice`, 6, 10_000)) { ack({ line: null }); return; }
+    ack({ line: await botLine(payload ?? {}) });
+  });
+
+  /** Share a bot's line with the rest of the room, so everyone sees the same banter. */
+  socket.on('bot-said', (payload: any) => {
+    const rc = payload?.roomCode;
+    if (!isRoomMember(socket, rc) || !rateOk(`${socket.id}:said`, 10, 10_000)) return;
+    const uid = cleanStr(payload.uid, 32);
+    const line = cleanStr(payload.line, 80);
+    if (!uid.startsWith('agent_') || !line) return;
+    socket.to(rc).emit('bot-said', { uid, line });
+  });
+
+  /** One line summing up the finished match for the results screen, or null. */
+  socket.on('match-roast', async (payload: any, ack?: (res: { line: string | null }) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!rateOk(`${socket.id}:roast`, 3, 30_000)) { ack({ line: null }); return; }
+    ack({ line: await matchRoast(payload?.stats ?? [], payload?.winner) });
   });
 
   // Lightweight RTT probe for the optional in-game net-stats overlay. Echoes the

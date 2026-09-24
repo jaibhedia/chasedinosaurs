@@ -18,7 +18,7 @@ export default function GameMenu() {
   const setPaused = useGameStore((s) => s.setPaused);
   const gameMode = useGameStore((s) => s.gameMode);
   const [muted, setMuted] = useState(audioManager.isMuted);
-  const [musicOn, setMusicOn] = useState(true);
+  const [musicOn, setMusicOn] = useState(audioManager.isMusicOn());
   const toggleMute = () => { audioManager.toggleMute(); setMuted(audioManager.isMuted); };
   const toggleMusic = () => setMusicOn(audioManager.toggleMusic());
 

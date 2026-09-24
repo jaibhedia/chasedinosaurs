@@ -97,13 +97,20 @@ Service workers only run in production builds; check with `npm run build && npm 
 - The arena is generated from a seeded RNG, so every client in a room builds the same map.
 - Each client simulates its own dino and sends its position about 30 times a second; other
   players are dead-reckoned between packets.
+- The server decides who holds the egg: clients only *claim* it, and the server checks each
+  claim against the positions it has seen and broadcasts the new owner with a sequence
+  number, so every screen agrees. It also runs the clock and names the winner.
 - One client in each room steers the bots and broadcasts their positions. If it drops, the
   next client takes over within about a second.
-- Every few seconds the bot-steering client sends a small snapshot to the server, which asks
-  the LLM for each bot's tactic, persona and one-line taunt. Movement stays local and runs
-  every frame.
-- The round clock runs off the wall clock (the server's start time online), so it keeps
-  real time at any frame rate.
+- Bot tactics are local (`src/scene/botTactics.ts`): the nearest chaser goes straight in,
+  the next cuts off the escape, a third covers the lane. Easy / Normal / Hard tune speed,
+  prediction, reaction time, teamwork and power use.
+- Bots talk when something happens (a steal, a loss, closing in, ten seconds left). The
+  server asks the LLM for one short line (`server/src/botVoice.ts`); with no key, or no
+  answer within about a second, the bot uses a canned line for its persona. The results
+  screen gets a one-line roast the same way.
+- The round clock runs off the wall clock (the server's, online), so it keeps real time at
+  any frame rate.
 
 ## License
 
