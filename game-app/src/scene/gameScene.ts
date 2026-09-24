@@ -182,8 +182,17 @@ export class GameScene extends Phaser.Scene {
   private currentPhase: 'countdown' | 'playing' = 'countdown';
   private countdownTimer = 3;
   private gameTimer = GAME_DURATION;
-  private phaseAccum = 0;
-  /** Last whole-second of the server clock we snapshotted on (MP wall-clock path). */
+  /**
+   * Wall-clock ms at which the 3s countdown began. Online it's the server's start time;
+   * solo it's when the scene started, pushed forward by however long the pause menu was
+   * open. Timing off the wall clock, not frame deltas, keeps the round 60 real seconds
+   * on a phone that can't hold 30 FPS (frame deltas are clamped to 1/30s, so a slow
+   * device used to play the whole round in slow motion).
+   */
+  private clockStart = 0;
+  /** When the pause menu opened (solo only; online the room's clock keeps running). */
+  private pausedAt: number | null = null;
+  /** Last whole second of the clock we snapshotted on. */
   private lastClockSec = -1;
   /** Guards endGame() against being fired twice once the server clock hits zero. */
   private matchEnded = false;
@@ -327,6 +336,8 @@ export class GameScene extends Phaser.Scene {
     this.currentPhase = startPhase;
     this.countdownTimer = startCountdown;
     this.gameTimer = startTimer;
+    this.clockStart = this.gameMode === 'multiplayer' && this.serverStartTime ? this.serverStartTime : Date.now();
+    this.pausedAt = null;
     setGamePhase(startPhase);
     setCountdownTimer(startCountdown);
     setTimeRemaining(startTimer);
@@ -489,6 +500,9 @@ export class GameScene extends Phaser.Scene {
     const finalPlayers = restored ? restored.players : players;
     if (restored) {
       this.gameTimer = restored.gameTimer;
+      // Resume with the same time left: pretend the countdown and the elapsed part of
+      // the round happened just now.
+      this.clockStart = Date.now() - (3 + (GAME_DURATION - restored.gameTimer)) * 1000;
       this.currentPhase = 'playing';
       this.countdownTimer = 0;
       setCountdownTimer(0);
@@ -599,40 +613,22 @@ export class GameScene extends Phaser.Scene {
     this.updateMinimap(_time);
     this.updateEggArrow();
 
+    // Solo: the pause menu stops the clock. Online: the room's clock never stops, so the
+    // match still ends on time for everyone while one player has the menu open.
+    if (store.paused && !this.isOnlineMp) {
+      if (this.pausedAt === null) this.pausedAt = Date.now();
+    } else {
+      if (this.pausedAt !== null) {
+        this.clockStart += Date.now() - this.pausedAt;
+        this.pausedAt = null;
+      }
+      this.advanceClock(store);
+      if (this.matchEnded) return;
+    }
+
     // The in-game menu freezes the simulation; sprites below still render so the
     // frozen world stays visible behind the overlay.
     if (!store.paused) {
-      // Multiplayer: drive the countdown + match timer from the SHARED server wall-clock,
-      // not from accumulated (frame-rate-clamped) dt. Frame-rate-driven timing made any
-      // client below 30 FPS run the whole match in slow-motion ("stuck in countdown") and
-      // drift out of sync with the host. Wall-clock = real speed + identical on every client.
-      if (this.gameMode === 'multiplayer' && this.serverStartTime != null) {
-        this.advanceServerClock(store);
-        if (this.matchEnded) return;
-      } else {
-        this.phaseAccum += dt;
-        if (this.phaseAccum >= 1) {
-          this.phaseAccum = 0;
-          if (this.currentPhase === 'countdown') {
-            this.countdownTimer--;
-            store.setCountdownTimer(this.countdownTimer);
-            if (this.countdownTimer <= 0) {
-              this.currentPhase = 'playing';
-              store.setGamePhase('playing');
-            }
-          } else if (this.currentPhase === 'playing') {
-            this.gameTimer--;
-            store.setTimeRemaining(this.gameTimer);
-            if (this.gameTimer <= 0) {
-              this.endGame();
-              return;
-            }
-          }
-          // Snapshot live state once a second so a refresh resumes mid-match.
-          this.saveSnapshot();
-        }
-      }
-
       if (this.currentPhase === 'playing') {
         this.updateMovement(dt);
         this.updateBots(dt);
@@ -2009,14 +2005,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Multiplayer match clock, derived from the shared `serverStartTime` wall-clock so it
-   * advances at REAL speed and reads identically on every client, independent of frame
-   * rate. (The old phaseAccum/dt path slowed the whole match on any client under 30 FPS.)
+   * Match clock, read off the wall clock (see `clockStart`) so it runs at real speed at
+   * any frame rate and, online, reads the same on every client.
    * Layout: first 3s = countdown, then GAME_DURATION seconds of play.
    */
-  private advanceServerClock(store: ReturnType<typeof useGameStore.getState>) {
-    const start = this.serverStartTime as number;
-    const elapsed = (Date.now() - start) / 1000;
+  private advanceClock(store: ReturnType<typeof useGameStore.getState>) {
+    const elapsed = (Date.now() - this.clockStart) / 1000;
 
     // Snapshot ~once per second for refresh-resume (mirrors the single-player path).
     const sec = Math.floor(elapsed);
