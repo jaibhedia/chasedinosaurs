@@ -16,7 +16,6 @@ export interface GameProps {
 
 export function Game({ onGameEnd }: GameProps) {
   const { gamePhase, countdownTimer, players, userId } = useGameStore();
-  const replay = useGameStore((s) => s.replay);
   const [mobileDirection, setMobileDirection] = useState({ x: 0, y: 0 });
   const [mobilePowerUpPressed, setMobilePowerUpPressed] = useState(false);
   const endedRef = useRef(false);
@@ -75,15 +74,13 @@ export function Game({ onGameEnd }: GameProps) {
     }
   }, [mobilePowerUpPressed]);
 
-  // On match end, give settlement a brief moment to return the payout (the scene
-  // mirrors it to localStorage for the results page), then hand off. Capped so we never
-  // hang if the chain is slow or the room was never staked.
+  // On match end, hold the "time's up" beat briefly so the final grab registers, then
+  // hand off to the results screen.
   useEffect(() => {
     if (gamePhase !== 'ended' || endedRef.current) return;
-    if (replay.done) { endedRef.current = true; onGameEnd(); return; }
-    const t = setTimeout(() => { endedRef.current = true; onGameEnd(); }, 7000);
+    const t = setTimeout(() => { endedRef.current = true; onGameEnd(); }, 1500);
     return () => clearTimeout(t);
-  }, [gamePhase, replay.done, onGameEnd]);
+  }, [gamePhase, onGameEnd]);
 
   return (
     <main
@@ -121,27 +118,15 @@ export function Game({ onGameEnd }: GameProps) {
       <AnimatePresence>
         {gamePhase === 'ended' && (
           <motion.div
-            key="settling"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            key="times-up"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[70] flex items-center justify-center bg-black/55 pointer-events-none"
+            className="absolute inset-0 z-[70] flex items-center justify-center bg-black/45 pointer-events-none"
           >
-            {/* Was "Securing replay on 0G Storage…". The wait here is the settlement
-                transaction, so say that — a player who just won money wants to know the
-                payout is moving, not that a Merkle root is being written. */}
-            <div className="px-panel px-6 py-5 flex flex-col items-center gap-2 text-center">
-              <span
-                className="inline-block h-2.5 w-2.5 rounded-full"
-                style={{
-                  background: replay.done ? '#4ade80' : '#ffc93c',
-                  boxShadow: replay.done ? '0 0 8px #4ade80' : '0 0 8px #ffc93c',
-                }}
-              />
-              <p className="px-heading text-sm sm:text-base" style={{ color: '#ffc93c', textShadow: '2px 2px 0 #11111c' }}>
-                {replay.done
-                  ? (replay.arcPot ? `Pot paid out · ${replay.arcPot} USDC` : 'Match complete')
-                  : 'Settling the pot on Arc…'}
+            <div className="px-panel px-6 py-4 sm:px-10 sm:py-6">
+              <p className="px-heading text-2xl sm:text-4xl" style={{ color: '#ffc93c', textShadow: '4px 4px 0 #11111c' }}>
+                TIME!
               </p>
             </div>
           </motion.div>

@@ -32,7 +32,7 @@ export interface GameMap {
   height: number;
 }
 
-/** Agent-brain intent produced by 0G Compute (mirrors server/src/agents/agentBrain.ts). */
+/** Agent-brain intent (mirrors server/src/agents/agentBrain.ts). */
 export type AgentMode = 'hunt' | 'flee' | 'guard' | 'intercept' | 'roam';
 export type AgentPersona = 'aggressive' | 'sneaky' | 'cocky' | 'cautious';
 export interface AgentIntent {
@@ -41,21 +41,6 @@ export interface AgentIntent {
   targetId?: string;
   persona?: AgentPersona;
   taunt?: string;
-}
-
-/**
- * End-of-match settlement state: whether the pot has been paid and what it was.
- *
- * Still called ReplayInfo, and still delivered over `replay-stored`, because it used to
- * carry the 0G Storage replay hashes that have since been removed.
- */
-export interface ReplayInfo {
-  storing: boolean;
-  done: boolean;
-  /** Arc payout tx, pot size in USDC, explorer link. Null for an unstaked room. */
-  arcTxHash: string | null;
-  arcPot: string | null;
-  arcExplorer: string | null;
 }
 
 /** One blip on the minimap. Fed from the scene at ~12Hz (throttled). */
@@ -77,8 +62,7 @@ export interface Player {
   userId?: string;
   targetX?: number;
   targetY?: number;
-  /** High-level intent set by the 0G Compute agent brain; executed each frame by
-   *  updateBots(). Absent → scripted fallback (0G offline). */
+  /** High-level intent for a bot; executed each frame by updateBots(). */
   aiIntent?: AgentIntent;
   persona?: AgentPersona;
   /** Latest taunt + when it arrived (ms), for the timed speech bubble. */
@@ -148,13 +132,8 @@ interface GameState {
   multiplayerHiddenFill: boolean;
   /** In-game menu open → freeze the simulation. */
   paused: boolean;
-  /** Live 0G Compute status for the HUD pill. `live` = brains are 0G-driven this
-   *  tick; `source` distinguishes real inference vs cached vs scripted fallback. */
-  ogStatus: { live: boolean; source: 'og' | 'cache' | 'fallback' };
   /** Throttled snapshot of world positions for the minimap (world dims + blips). */
   minimap: { w: number; h: number; dots: MinimapDot[] };
-  /** 0G Storage replay state (Phase 2) for the results screen. */
-  replay: ReplayInfo;
 
   setUserId: (id: string | null) => void;
   initUserId: () => string;
@@ -173,9 +152,7 @@ interface GameState {
   setRoomCode: (code: string | null) => void;
   setMultiplayerHiddenFill: (value: boolean) => void;
   setPaused: (value: boolean) => void;
-  setOgStatus: (status: { live: boolean; source: 'og' | 'cache' | 'fallback' }) => void;
   setMinimap: (minimap: { w: number; h: number; dots: MinimapDot[] }) => void;
-  setReplay: (updates: Partial<ReplayInfo>) => void;
   setEgg: (ownerId: string | null, position: { x: number; y: number } | null) => void;
   setLastEggHolderId: (id: string | null) => void;
   lockCharacter: (characterId: string) => void;
@@ -205,9 +182,7 @@ const initialState = {
   socketUrl: null,
   multiplayerHiddenFill: false,
   paused: false,
-  ogStatus: { live: false, source: 'fallback' as const },
   minimap: { w: 0, h: 0, dots: [] as MinimapDot[] },
-  replay: { storing: false, done: false, arcTxHash: null, arcPot: null, arcExplorer: null } as ReplayInfo,
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -245,9 +220,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setRoomCode: (code) => set({ roomCode: code }),
   setMultiplayerHiddenFill: (value) => set({ multiplayerHiddenFill: value }),
   setPaused: (value) => set({ paused: value }),
-  setOgStatus: (status) => set({ ogStatus: status }),
   setMinimap: (minimap) => set({ minimap }),
-  setReplay: (updates) => set((state) => ({ replay: { ...state.replay, ...updates } })),
   setEgg: (ownerId, position) => set({ eggOwnerId: ownerId, eggPosition: position }),
   setLastEggHolderId: (id) => set({ lastEggHolderId: id }),
   lockCharacter: (characterId) =>

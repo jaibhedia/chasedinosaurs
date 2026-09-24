@@ -11,7 +11,7 @@ function formatMatchTime(seconds: number) {
   return `${m}:${r.toString().padStart(2, '0')}`;
 }
 
-// Readable label + color per 0G-chosen tactic, for the "0G Agents" HUD panel.
+// Readable label + color per bot tactic, for the bots HUD panel.
 const MODE_LABEL: Record<string, string> = {
   hunt: 'HUNTING', intercept: 'CUTTING OFF', guard: 'GUARDING', flee: 'FLEEING', roam: 'ROAMING',
 };
@@ -20,7 +20,7 @@ const MODE_COLOR: Record<string, string> = {
 };
 
 export default function GameHUD() {
-  const { players, userId, timeRemaining, setPaused, ogStatus } = useGameStore();
+  const { players, userId, timeRemaining, setPaused } = useGameStore();
   // Single shared touch-device check — keeps the HUD in lockstep with MobileControls so
   // the desktop chrome and the touch controls can never render at the same time.
   const isMobile = useIsTouchDevice();
@@ -73,28 +73,12 @@ export default function GameHUD() {
               </span>
             </div>
 
-            {/* Controls hint (desktop) — left header, before the AI·0G pill. */}
+            {/* Controls hint (desktop) — left header. */}
             {!isMobile && (
               <div className="pointer-events-none flex items-center gap-3 px-chip hud-lite px-3 py-2">
                 <p className="px-heading text-[9px] tracking-wider text-[#f4e7c3]">WASD/ARROWS</p>
               </div>
             )}
-
-            {/* 0G Compute status — the criterion #01 proof, on screen. Green = agent
-                brains are running live on 0G; red = scripted fallback (0G offline). */}
-            <div className="pointer-events-none flex items-center gap-1.5 px-chip hud-lite px-2 py-1 sm:gap-2 sm:px-3 sm:py-2">
-              <span
-                className="inline-block h-2 w-2 shrink-0 rounded-full sm:h-2.5 sm:w-2.5"
-                style={{
-                  background: ogStatus.live ? '#4ade80' : '#f87171',
-                  boxShadow: ogStatus.live ? '0 0 6px #4ade80' : 'none',
-                }}
-                aria-hidden
-              />
-              <span className="px-heading text-[8px] uppercase sm:text-[9px]" style={{ color: '#f4e7c3' }}>
-                {ogStatus.live ? 'AI · 0G live' : 'AI · 0G offline'}
-              </span>
-            </div>
 
           </div>
 
@@ -123,34 +107,24 @@ export default function GameHUD() {
         </div>
       </motion.div>
 
-      {/* 0G Agents panel — the live "AI reasoning" surface. One tidy fixed panel
-          (no world-space overlap) showing each agent's current 0G-chosen tactic +
-          latest taunt. Greys to "scripted" when 0G is offline. */}
+      {/* Bots panel: each bot's current tactic. The trash-talk shows as overhead
+          bubbles in-world. */}
       {!isMobile && agents.length > 0 && (
         <div className="pointer-events-none fixed bottom-6 left-6 z-[55] w-[190px] px-panel hud-lite px-3 py-2">
-          <div className="mb-1.5 flex items-center gap-1.5">
-            <span
-              className="inline-block h-2 w-2 rounded-full"
-              style={{
-                background: ogStatus.live ? '#4ade80' : '#f87171',
-                boxShadow: ogStatus.live ? '0 0 6px #4ade80' : 'none',
-              }}
-              aria-hidden
-            />
-            <span className="px-heading text-[8px] uppercase tracking-[0.2em] text-[#9fb0d8]">0G Agents</span>
+          <div className="mb-1.5">
+            <span className="px-heading text-[8px] uppercase tracking-[0.2em] text-[#9fb0d8]">Bots</span>
           </div>
-          {/* Behavior only — the trash-talk shows as overhead bubbles in-world. */}
           <div className="flex flex-col gap-1.5">
             {agents.map((a) => {
-              const mode = ogStatus.live ? a.aiIntent?.mode : undefined;
+              const mode = a.aiIntent?.mode;
               return (
                 <div key={a.id} className="flex items-center justify-between gap-2">
                   <span className="px-heading truncate text-[9px] text-[#f4e7c3]">{a.character.name}</span>
                   <span
                     className="px-heading shrink-0 text-[8px] uppercase"
-                    style={{ color: ogStatus.live ? (mode ? MODE_COLOR[mode] ?? '#9fb0d8' : '#9fb0d8') : '#5b6b8c' }}
+                    style={{ color: mode ? MODE_COLOR[mode] ?? '#9fb0d8' : '#9fb0d8' }}
                   >
-                    {ogStatus.live ? (mode ? MODE_LABEL[mode] ?? mode : '…') : 'scripted'}
+                    {mode ? MODE_LABEL[mode] ?? mode : '…'}
                   </span>
                 </div>
               );

@@ -58,10 +58,10 @@ export default function App() {
   if (!ready || !selectedCharacter || !selectedMap) return null;
 
   const handleGameEnd = () => {
-    const { winner, players, gameMessage, replay } = useGameStore.getState();
-    // Include the settlement result in the handoff: localStorage is per-origin, so in
-    // dev (game on :5173, results on :3000) the hash is the only channel that crosses.
-    const result = JSON.stringify({ winner, players, gameMessage, replay });
+    const { winner, players, gameMessage } = useGameStore.getState();
+    // localStorage is per-origin, so in dev (game on :5173, results on :3000) the hash
+    // is the only channel that crosses.
+    const result = JSON.stringify({ winner, players, gameMessage });
     // Same cross-origin handoff as the inbound config: pass via URL hash, keep
     // localStorage as the same-origin fallback.
     try { localStorage.setItem('chase-game-result', result); } catch { /* ignore */ }

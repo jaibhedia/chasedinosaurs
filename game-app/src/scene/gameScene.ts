@@ -13,11 +13,9 @@ const CHAR_SPRITES: Record<string, { name: string }> = {
 };
 
 const SPRITE_SCALE = 4;
-/** How often the client asks 0G Compute for fresh agent intents (slow tier). The
- *  LLM only sets strategy at this cadence; per-frame steering stays local. */
-// 0G strategy cadence. Kept conservative to respect the testnet router rate limit —
-// the local fast-tier steering reacts instantly between ticks, so the LLM only needs
-// to refresh high-level strategy/taunts occasionally.
+/** How often the client asks the server's LLM for fresh agent intents (slow tier).
+ *  The LLM only sets strategy at this cadence; per-frame steering stays local, so it
+ *  only needs to refresh high-level strategy/taunts occasionally. */
 const AGENT_TICK_MS = 5000;
 /**
  * How long a non-authority client waits on silence before steering the bots itself.
@@ -164,17 +162,10 @@ export class GameScene extends Phaser.Scene {
   private onWinBlur?: () => void;
   private onWinVisibility?: () => void;
 
-  // --- 0G Compute agent brains (slow tier) ---
+  // --- LLM agent brains (slow tier) ---
   private agentNetBound = false;
   private lastAgentTick = 0;
   private onAgentIntents?: (payload: any) => void;
-  /** Last-known 0G Compute status (pushed to the store for the HUD pill). */
-  private ogEnabled = false;
-  private ogSource: 'og' | 'cache' | 'fallback' = 'fallback';
-  // --- Match-end settlement result (arrives over `replay-stored`) ---
-  private replayNetBound = false;
-  private onReplayStored?: (payload: any) => void;
-  private replayRequested = false;
   /** Throttle for pushing minimap blips to the store (~12Hz). */
   private lastMinimap = 0;
   /** Overhead taunt speech bubbles, keyed by player id (behavior stays in the HUD panel). */
@@ -255,7 +246,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Online-MP only: am I the one client that drives the fill-agents? Pick the
    * connected human with the smallest user_id — a deterministic choice every client
-   * computes identically, so exactly one client steers the bots, emits the 0G
+   * computes identically, so exactly one client steers the bots, emits the
    * agent-tick (no duplicate inference spend), and broadcasts agent positions. If
    * the authority drops, the next-smallest naturally takes over on the next match.
    * Single-player / hidden-fill don't use this (they always own their own bots).
@@ -426,7 +417,7 @@ export class GameScene extends Phaser.Scene {
       // where each player starts. Local user is 'player'; the rest are network-driven.
       const room = this.gameMode === 'multiplayer' ? (store.roomPlayers || []) : [];
       const ordered = [...room].sort((a: any, b: any) => String(a.user_id).localeCompare(String(b.user_id)));
-      // Online-MP agent-fill: top up empty seats with 0G agents so a half-full room is
+      // Online-MP agent-fill: top up empty seats with AI agents so a half-full room is
       // still a full match. Reserve ring slots for them up front so humans + agents all
       // get distinct, deterministic spawn points every client agrees on.
       const FILL_TARGET = 4;
@@ -471,7 +462,7 @@ export class GameScene extends Phaser.Scene {
           });
         });
 
-        // 0G fill-agents for the empty seats. Deterministic id/character/spawn on every
+        // AI fill-agents for the empty seats. Deterministic id/character/spawn on every
         // client; the authority steers them and broadcasts their state (see updateBots /
         // updateMultiplayerNet), non-authority clients render them off the network.
         if (fillCount > 0) {
@@ -754,7 +745,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Overhead taunt bubbles above each agent (the agent's TACTIC lives in the HUD
-   *  "0G Agents" panel; only the trash-talk is shown in-world, transiently, so it
+   *  bots panel; only the trash-talk is shown in-world, transiently, so it
    *  doesn't stack into a cluttered mess). */
   private renderAgentTaunts() {
     if (!this.gsPlayers.some((p) => p.isBot)) return;
@@ -2196,14 +2187,14 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * The "slow tier" of the AI: every AGENT_TICK_MS we ship a compact world snapshot
-   * to the server, which runs ONE 0G Compute inference and returns a high-level
+   * to the server, which runs ONE LLM inference and returns a high-level
    * intent per bot. We apply those intents onto gsPlayers; updateBots() executes
    * them each frame.
    *
    * Online MP fills empty seats with agents too, so this runs there as well — but only
    * the authority client EMITS the tick, so a room runs one inference rather than one
-   * per player. Every client binds the intents listener, so taunts and the 0G pill show
-   * for everyone regardless of who is steering.
+   * per player. Every client binds the intents listener, so taunts show for everyone
+   * regardless of who is steering.
    */
   private updateAgentBrains(now: number) {
     if (!this.gsPlayers.some((p) => p.isBot)) return;
@@ -2214,14 +2205,6 @@ export class GameScene extends Phaser.Scene {
       this.agentNetBound = true;
       this.onAgentIntents = (payload: any) => {
         if (!payload) return;
-        this.ogEnabled = !!payload.ogEnabled;
-        this.ogSource = payload.source || 'fallback';
-        // Surface to the React HUD (the canvas-overlay DOM pill is always visible,
-        // unlike a Phaser fixed-text which the HUD draws over).
-        useGameStore.getState().setOgStatus({
-          live: this.ogEnabled && this.ogSource !== 'fallback',
-          source: this.ogSource,
-        });
         const intents: AgentIntent[] = Array.isArray(payload.intents) ? payload.intents : [];
         const byId = new Map(intents.map((it) => [it.agentId, it]));
         const store = useGameStore.getState();
@@ -2233,7 +2216,7 @@ export class GameScene extends Phaser.Scene {
           p.aiIntent = it;
           if (it.persona) p.persona = it.persona;
           if (it.taunt) { p.taunt = it.taunt; p.tauntAt = tNow; }
-          // Dual-write to the store so the HUD "0G Agents" panel reflects live state.
+          // Dual-write to the store so the HUD bots panel reflects live state.
           store.updatePlayer(p.id, {
             aiIntent: it,
             ...(it.persona ? { persona: it.persona } : {}),
@@ -2251,8 +2234,8 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // The intents listener above is bound on EVERY client (so taunts + the 0G pill
-    // show for all), but only the authority EMITS the tick — one inference per room,
+    // The intents listener above is bound on EVERY client (so taunts show for all),
+    // but only the authority EMITS the tick — one inference per room,
     // no duplicate spend. In single-player/hidden-fill the authority is always us.
     if (this.isOnlineMp && !this.agentAuthority) return;
 
@@ -2278,10 +2261,8 @@ export class GameScene extends Phaser.Scene {
           y: Math.round(p.y),
           hasEgg: !!p.hasEgg,
           ...(p.persona ? { persona: p.persona } : {}),
-          // Lets the server resolve this human to their wallet, and from there to their
-          // staking record in the subgraph, before it runs inference. The local player's
-          // scene id is the literal string 'player', so userId is the only stable key
-          // that survives the trip. Bots have none.
+          // The local player's scene id is the literal string 'player', so userId is
+          // the only stable key that survives the trip. Bots have none.
           ...(!p.isBot && (p.userId || (p.id === 'player' && this.localUserId))
             ? { userId: p.userId || this.localUserId }
             : {}),
@@ -2325,7 +2306,7 @@ export class GameScene extends Phaser.Scene {
       const baseMult = bot.hasEgg ? BOT_SPEED_HOLDER : BOT_SPEED_HUNTER;
       const now = Date.now();
       const slowEffectMul = (bot.slowedUntil && bot.slowedUntil > now) ? 0.3 : 1.0;
-      // Persona (set by 0G) gives each agent a distinct feel: an aggressive bot
+      // Persona (set by the LLM) gives each agent a distinct feel: an aggressive bot
       // visibly presses harder than a cautious one, so the brains read differently.
       const personaMul =
         bot.persona === 'aggressive' ? 1.14 :
@@ -2334,9 +2315,9 @@ export class GameScene extends Phaser.Scene {
       const ramp = this.botRamp();
       const speed = bot.character.speed * baseMult * dt * speedMul * infernoMul * slowEffectMul * personaMul * ramp.speed;
 
-      // Intent set by the 0G Compute agent brain (updateAgentBrains). When absent
-      // (0G offline / not yet ticked) every branch below falls through to the
-      // original scripted behavior — this is the criterion #01 on/off difference.
+      // Intent set by the LLM agent brain (updateAgentBrains). When absent (provider
+      // offline / not yet ticked) every branch below falls through to the original
+      // scripted behavior.
       const intent = bot.aiIntent;
 
       if (bot.hasEgg) {
@@ -2358,7 +2339,7 @@ export class GameScene extends Phaser.Scene {
         // The LLM picks the ROLE (hunt vs intercept); the TARGET is always whoever
         // CURRENTLY holds the egg, resolved live each frame. So a stale intent can
         // never make an agent chase someone who already lost the egg — instant
-        // reactivity between the slower 0G strategy ticks.
+        // reactivity between the slower LLM strategy ticks.
         const target = eggHolder && !eggHolder.isInvincible ? eggHolder : undefined;
         if (target) {
           if (intent.mode === 'intercept') {
@@ -2377,12 +2358,12 @@ export class GameScene extends Phaser.Scene {
           this.wander(bot, speed);
         }
       } else if (intent && intent.mode === 'guard' && eggPos) {
-        // 0G brain: hold station near the loose egg / chokepoint, orbiting it.
+        // Guard: hold station near the loose egg / chokepoint, orbiting it.
         const gx = eggPos.x + Math.cos(this.time.now * 0.0006 + bot.x) * 90;
         const gy = eggPos.y + Math.sin(this.time.now * 0.0006 + bot.y) * 90;
         this.moveTowards(bot, gx, gy, speed * 0.85);
       } else if (eggHolder && !eggHolder.isInvincible) {
-        // Fallback (roam / no 0G intent): converge on the holder. Leads like hunt does,
+        // Fallback (roam / no intent): converge on the holder. Leads like hunt does,
         // so a bot with no intent yet is merely less coordinated than one with a brain,
         // not visibly broken — this is the path every bot takes for the first few
         // seconds of a round, before the first strategy tick lands.
@@ -3236,59 +3217,5 @@ export class GameScene extends Phaser.Scene {
       ? `🥚 You held the egg at the end! (${grabs} steals)`
       : `🥚 ${winner.character.name} held the egg at the end! (${grabs} steals)`;
     store.setGameResult(winner, msg);
-    this.requestReplayStorage(winner);
-  }
-
-  /**
-   * Phase 2 — kick off the verifiable 0G Storage upload of this match's replay (result
-   * + the real 0G Compute decision transcript). We bind a one-shot listener for the
-   * resulting Merkle root hash, mirror it to the store + localStorage (so the cross-
-   * origin results screen can read it), and emit `store-replay` to the server. The
-   * roomCode MUST match the agent-tick key so the server finds this match's transcript.
-   */
-  private requestReplayStorage(winner: Player) {
-    if (this.replayRequested) return;
-    this.replayRequested = true;
-    const socket = getGameSocket();
-    const store = useGameStore.getState();
-    store.setReplay({ storing: true, done: false });
-    if (!socket) { store.setReplay({ storing: false, done: true }); return; }
-
-    if (!this.replayNetBound) {
-      this.replayNetBound = true;
-      this.onReplayStored = (payload: any) => {
-        if (!payload) return;
-        // The settled pot, which is all `replay-stored` carries now that the 0G Storage
-        // replay and 0G leaderboard are gone.
-        const info = {
-          storing: false,
-          done: true,
-          arcTxHash: payload.arcTxHash ?? null,
-          arcPot: payload.arcPot ?? null,
-          arcExplorer: payload.arcExplorer ?? null,
-        };
-        useGameStore.getState().setReplay(info);
-        // Persist for the (separate) results page, which is a fresh cross-origin load.
-        try { localStorage.setItem('chase-replay', JSON.stringify(info)); } catch { /* ignore */ }
-      };
-      socket.on('replay-stored', this.onReplayStored);
-      this.events.once('shutdown', () => {
-        if (this.onReplayStored) socket.off('replay-stored', this.onReplayStored);
-        this.onReplayStored = undefined;
-        this.replayNetBound = false;
-      });
-    }
-
-    const rc = this.roomCode || `solo-${this.localUserId || 'anon'}`;
-    const result = {
-      winner: { id: winner.id, name: winner.character.name, userId: winner.userId ?? null, eggHoldCount: winner.eggHoldCount ?? 0 },
-      players: this.gsPlayers.map((p) => ({
-        id: p.id, name: p.character.name, isBot: !!p.isBot,
-        userId: p.userId ?? null, eggHoldCount: p.eggHoldCount ?? 0, persona: p.persona ?? null,
-      })),
-    };
-    // Clear any stale hash from a previous match so the results page doesn't show it.
-    try { localStorage.removeItem('chase-replay'); } catch { /* ignore */ }
-    socket.emit('store-replay', { roomCode: rc, result });
   }
 }
