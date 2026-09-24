@@ -5,6 +5,7 @@ import { Play, Send, Twitter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGameStore } from '@/store/gameStore';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { InstallHint } from '@/components/InstallHint';
 import { SITE } from '@/config';
 
 export default function Home() {
@@ -22,7 +23,7 @@ export default function Home() {
           screens; only the bottom grass is trimmed. */}
       <div className="absolute inset-0 z-0 bg-[#1a3a1a]">
         <img
-          src={`${import.meta.env.BASE_URL}assets/main_bg.png`}
+          src={`${import.meta.env.BASE_URL}assets/main_bg.webp`}
           alt="Chase Dinosaurs"
           className="w-full h-full object-cover object-top"
           style={{ imageRendering: 'pixelated' }}
@@ -50,6 +51,8 @@ export default function Home() {
             Play
           </Button>
         </motion.div>
+
+        <InstallHint />
 
         <div className="flex items-center gap-2.5 sm:gap-3">
           <a

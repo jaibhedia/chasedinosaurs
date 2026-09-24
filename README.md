@@ -82,6 +82,16 @@ npm run preview   # serve dist/ locally
   health check `/health`, region Frankfurt). Set `CORS_ORIGIN` to the site URL and the
   `AI_*` vars.
 
+## Installable (PWA)
+
+The production build registers a service worker that precaches the whole game (code,
+sprites, tiles, audio, fonts), so once it's loaded it installs to the home screen and plays
+solo with no connection. New versions download in the background and offer an **Update**
+button, never during a match. Android and desktop Chrome get an **Install app** button on
+the home screen; iOS Safari gets a one-time "Share → Add to Home Screen" hint.
+
+Service workers only run in production builds; check with `npm run build && npm run preview`.
+
 ## How a match works
 
 - The arena is generated from a seeded RNG, so every client in a room builds the same map.

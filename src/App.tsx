@@ -3,6 +3,8 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { SocketProvider } from '@/providers/SocketProvider';
 import LandscapePrompt from '@/components/LandscapePrompt';
 import { RoomWatcher } from '@/components/RoomWatcher';
+import { UpdatePrompt } from '@/components/UpdatePrompt';
+import { isNativeApp } from '@/lib/platform';
 import { audioManager } from '@/utils/audioManager';
 import Home from '@/screens/Home';
 import ModeSelect from '@/screens/ModeSelect';
@@ -53,6 +55,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {!PORTRAIT_OK.has(location.pathname) && <LandscapePrompt />}
+      {!isNativeApp() && <UpdatePrompt />}
       {/* Faint CRT scanlines over everything. */}
       <div className="scanlines" aria-hidden="true" />
     </SocketProvider>
