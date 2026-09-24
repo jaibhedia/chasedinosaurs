@@ -6,8 +6,26 @@ then ships to the App Store and Google Play. Web3 is removed. The AI opponents s
 **Order:** web first, then PWA, then native. Each step reuses the previous build: the
 native apps wrap the same web bundle, so nothing gets written twice.
 
-> Your feedback goes in [§13](#13-feedback-intake). I'll fold it into the phases before any
-> code changes.
+> Your feedback goes in [§13](#13-feedback-intake).
+
+---
+
+## Progress (Sep 24)
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 · Strip Web3 | ✅ Done | Hackathon build stays on `main` at `dc4f510` |
+| 1 · Multiplayer | ✅ M1–M4 done · ⏳ M5, M6 open | Server owns the egg, clock and result; Quick Play; reconnect on resume; powers networked. M5 (bots on the server) and M6 (paid Frankfurt instance, then multi-region) remain |
+| 2 · One app | ✅ Done | Vite app at the repo root; the socket URL resolves at runtime (`?server=` override) rather than from a `config.json` |
+| 3 · AI | ✅ A1, A2, A3, A5, A6 · ⏳ A4 | Local team tactics, Easy/Normal/Hard, event-driven lines with canned fallback, post-match roast, rate limits. A4 (named personalities with their own look) is open |
+| 4 · Feel | ✅ Juice, SFX, haptics, coaching · ⏳ new arena | First-match hints instead of a scripted tutorial round |
+| 5 · PWA | ✅ Done | Offline solo verified against the production build |
+| 6 · Native | ✅ Scaffolded · ⏳ store work | Capacitor projects, icons, splash, CI debug APK. Remaining: signing keys, release AAB, TestFlight, store listings, deep links for `/join/CODE` |
+| 7 · Meta | ⏳ Not started | By design, after it's fun |
+
+Also fixed along the way: a 14× cheaper render (off-screen culling, collision index, baked
+minimap), an intercept units bug that sent bots running parallel to you, steals that were
+silent, and an invisible collision strip under every bush and tree.
 
 ---
 
@@ -134,7 +152,7 @@ configured by three env vars.
 |---|---|---|
 | A1 | **Local role assignment.** The prompt already spells out the tactic: the closest bot hunts, the others intercept or guard the lanes, and they never all dogpile. Implement that rule directly in `updateBots()` so every bot has a role from the first frame | Solo play gets smart, instant and offline. Today the first 5 s of each round, and every offline match, runs on the dumb fallback |
 | A2 | **Difficulty: Easy / Normal / Hard.** Map each level to bot speed, prediction lead, reaction delay, and how often bots use power-ups. `botRamp()` already exists and is capped at medium | Edgar #4. It also gives new players a first win |
-| A3 | **LLM handles voice, not tactics.** Call it when something happens (egg stolen, near miss, last 10 s, match end) rather than every 5 s. Use a small, fast model. Keep persona-flavoured canned lines as the fallback so bots are never silent | Roughly 3× fewer calls per match. Taunts land when they're funny, not on a timer |
+| A3 | **LLM handles voice, not tactics.** Call it when something happens (egg stolen, near miss, last 10 s, match end) rather than every 5 s. Use a small, fast model. Keep persona-flavoured canned lines as the fallback so bots are never silent | Each call is a ~30-token line instead of an up-to-800-token JSON plan. Taunts land when they're funny, not on a timer |
 | A4 | **Named bot personalities.** For example "Rex (cocky)" or "Pip (sneaky)", each with a consistent colour, name tag and voice. The persona system is already there; give it a face | Players remember "that sneaky one" and want to beat it |
 | A5 | **Post-match roast.** One LLM line on the results screen, based on the match events ("held the egg for 2 s total, bold strategy") | Cheap, shareable, and makes people want a rematch |
 | A6 | **Cost guard.** Per-IP and per-day caps on AI calls, and hide the "AI offline" pill from players (log it instead) | A public launch shouldn't be able to drain the key |
