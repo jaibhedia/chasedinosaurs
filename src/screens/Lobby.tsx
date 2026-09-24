@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Copy, Globe, Lock, Play } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bot, Check, Copy, Globe, Lock, Play, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DinoSprite } from '@/components/DinoSprite';
 import { useGameStore } from '@/store/gameStore';
@@ -8,6 +8,7 @@ import { useSocket, type LobbyPlayer } from '@/providers/SocketProvider';
 import { characters } from '@/data/characters';
 import { gameMaps } from '@/data/maps';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { getServerOffset } from '@/lib/socketBridge';
 
 interface PublicRoom {
   room_code: string;
@@ -19,16 +20,20 @@ const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 4;
 const charNum = (c: { id: string }) => parseInt(c.id.split('-')[1], 10);
 
-export default function Lobby() {
+/**
+ * Multiplayer: create a room, join by code or from the public list, or (with `quick`)
+ * matchmake into a Quick Play room that starts itself with bots in the empty seats.
+ */
+export default function Lobby({ quick = false }: { quick?: boolean }) {
   const navigate = useNavigate();
   const params = useParams<{ code?: string }>();
-  usePageTitle('Multiplayer lobby');
+  usePageTitle(quick ? 'Quick Play' : 'Multiplayer lobby');
 
   const {
-    selectedCharacter, setCharacter, setGameMode,
+    selectedCharacter, setCharacter, setGameMode, setQuickPlay,
     setRoomCode: setStoreRoomCode, userId: storeUserId, initUserId, roomCode: storeRoomCode,
   } = useGameStore();
-  const { socket, ensureConnected, createRoom, joinRoom, setPlayerReady, chooseCharacter, startGame, leaveRoom } = useSocket();
+  const { socket, ensureConnected, createRoom, joinRoom, quickPlay, setPlayerReady, chooseCharacter, startGame, leaveRoom } = useSocket();
 
   const [roomCode, setRoomCode] = useState((params.code ?? '').toUpperCase());
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
@@ -41,6 +46,11 @@ export default function Lobby() {
   const [copied, setCopied] = useState(false);
   const autoJoinTried = useRef(false);
   const rejoinTried = useRef(false);
+  const quickTried = useRef(false);
+  const [quickRoom, setQuickRoom] = useState(false);
+  /** Server time a Quick Play room starts. */
+  const [startsAt, setStartsAt] = useState<number | null>(null);
+  const [, setTick] = useState(0);
 
   const userId = storeUserId || initUserId();
 
@@ -52,8 +62,9 @@ export default function Lobby() {
   // Roster + start events.
   useEffect(() => {
     if (!socket) return;
-    const onRoster = ({ players: list }: { players?: LobbyPlayer[] }) => {
+    const onRoster = ({ players: list, startsAt: at }: { players?: LobbyPlayer[]; startsAt?: number | null }) => {
       if (Array.isArray(list)) setPlayers([...list]);
+      if (typeof at === 'number') setStartsAt(at);
     };
     const onRoomState = ({ players: list }: { players?: LobbyPlayer[] }) => {
       if (!Array.isArray(list)) return;
@@ -110,22 +121,59 @@ export default function Lobby() {
     return () => clearInterval(t);
   }, [socket, isInRoom, roomCode]);
 
-  const enterRoom = (code: string, list: LobbyPlayer[]) => {
+  const enterRoom = (code: string, list: LobbyPlayer[], info?: { quick?: boolean; startsAt?: number | null }) => {
     setRoomCode(code);
     setStoreRoomCode(code);
     setPlayers(list ?? []);
+    setQuickRoom(!!info?.quick);
+    setQuickPlay(!!info?.quick);
+    setStartsAt(info?.startsAt ?? null);
     setIsInRoom(true);
   };
 
+  // Quick Play countdown.
+  useEffect(() => {
+    if (!startsAt) return;
+    const t = setInterval(() => setTick((n) => n + 1), 250);
+    return () => clearInterval(t);
+  }, [startsAt]);
+
+  // Quick Play: matchmake once on arrival.
+  const runQuickPlay = async () => {
+    const character = selectedCharacter ?? characters[0];
+    setBusy('join');
+    setError('');
+    if (storeRoomCode) { leaveRoom(); setStoreRoomCode(null); }
+    if (!(await ensureConnected())) {
+      setError("Can't reach the game server. Check your connection, or play solo for now.");
+      setBusy(null);
+      return;
+    }
+    try {
+      const res = await quickPlay({ userId, characterId: charNum(character), playerName: character.name });
+      enterRoom(res.roomCode, res.players, res);
+    } catch (err) {
+      setError((err as Error).message || 'Could not find a match.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  useEffect(() => {
+    if (!quick || !socket || quickTried.current) return;
+    quickTried.current = true;
+    void runQuickPlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quick, socket]);
+
   // Coming back from a match: the room is still ours, so go straight to its waiting room.
   useEffect(() => {
-    if (!socket || !storeRoomCode || rejoinTried.current || params.code) return;
+    if (!socket || !storeRoomCode || rejoinTried.current || params.code || quick) return;
     rejoinTried.current = true;
     const code = storeRoomCode;
-    const onRejoined = (res: { roomCode: string; players: LobbyPlayer[]; started: boolean }) => {
+    const onRejoined = (res: { roomCode: string; players: LobbyPlayer[]; started: boolean; quick?: boolean; startsAt?: number | null }) => {
       socket.off('rejoin-failed', onFailed);
       if (res.started) return; // a match is running; the play screen handles that
-      enterRoom(res.roomCode, res.players);
+      enterRoom(res.roomCode, res.players, res);
     };
     const onFailed = () => {
       socket.off('room-rejoined', onRejoined);
@@ -179,7 +227,7 @@ export default function Lobby() {
     }
     try {
       const res = await joinRoom({ roomCode: code, userId, characterId: charNum(character), playerName: character.name });
-      enterRoom(res.roomCode ?? code, res.players);
+      enterRoom(res.roomCode ?? code, res.players, res);
     } catch (err) {
       const msg = (err as Error).message;
       setStoreRoomCode(null);
@@ -210,6 +258,9 @@ export default function Lobby() {
     setPlayers([]);
     setStoreRoomCode(null);
     setRoomCode('');
+    setQuickRoom(false);
+    setStartsAt(null);
+    if (quick) navigate('/play');
   };
 
   const copyInvite = async () => {
@@ -244,6 +295,31 @@ export default function Lobby() {
     paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 0.75rem)',
     paddingRight: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)',
   };
+
+  if (!isInRoom && quick) {
+    return (
+      <div className={shell} style={shellStyle}>
+        <div className="w-full max-w-md mx-auto my-auto pixel-panel p-5 text-center space-y-4">
+          <Zap className="w-10 h-10 mx-auto text-[#ffc93c]" />
+          <h1 className="text-lg md:text-2xl title-pixel">Quick Play</h1>
+          {error ? (
+            <>
+              <p className="text-red-300 font-semibold" data-testid="lobby-error">{error}</p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                <Button onClick={() => void runQuickPlay()}>Try again</Button>
+                <Button variant="secondary" onClick={() => navigate('/solo')}>Play solo</Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-[#f4e7c3]/80">Finding a match…</p>
+          )}
+          <Button variant="outline" onClick={() => navigate('/play')} className="gap-2">
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (!isInRoom) {
     return (
@@ -350,6 +426,15 @@ export default function Lobby() {
       <div className="w-full max-w-5xl mx-auto my-auto grid md:grid-cols-2 gap-3 md:gap-6">
         {/* Left: room + roster */}
         <div className="space-y-3 md:space-y-4">
+          {quickRoom ? (
+          <div className="p-3 md:p-5 pixel-panel text-center" data-testid="quick-header">
+            <p className="text-[#f4e7c3]/70 text-sm">Quick Play</p>
+            <p className="text-2xl md:text-4xl font-bold text-[#ffc93c]" data-testid="quick-countdown">
+              {startsAt ? `Starting in ${Math.max(0, Math.ceil((startsAt - (Date.now() + getServerOffset())) / 1000))}` : 'Starting…'}
+            </p>
+            <p className="text-sm text-[#f4e7c3]/70">Bots take any empty seats.</p>
+          </div>
+          ) : (
           <div className="p-3 md:p-5 pixel-panel text-center">
             <p className="text-[#f4e7c3]/70 text-sm">Room code</p>
             <p className="text-3xl md:text-5xl font-bold text-[#f4e7c3] tracking-[0.3em]" data-testid="room-code">{roomCode}</p>
@@ -361,13 +446,16 @@ export default function Lobby() {
               <Copy className="w-3.5 h-3.5" /> {copied ? 'Copied!' : 'Share invite link'}
             </button>
           </div>
+          )}
 
           <div className="p-3 md:p-5 pixel-panel">
             <div className="flex items-center justify-between mb-2 md:mb-3">
               <h3 className="pixel-font text-sm md:text-lg text-[#f4e7c3]">Players {players.length}/{MAX_PLAYERS}</h3>
-              <span className={`text-sm ${players.length >= MIN_PLAYERS ? 'text-[#6ab04c]' : 'text-[#ffc93c]'}`}>
-                {players.length >= MIN_PLAYERS ? 'Bots fill empty seats' : `Need ${MIN_PLAYERS - players.length} more`}
-              </span>
+              {!quickRoom && (
+                <span className={`text-sm ${players.length >= MIN_PLAYERS ? 'text-[#6ab04c]' : 'text-[#ffc93c]'}`}>
+                  {players.length >= MIN_PLAYERS ? 'Bots fill empty seats' : `Need ${MIN_PLAYERS - players.length} more`}
+                </span>
+              )}
             </div>
             <div className="space-y-1.5 md:space-y-2" data-testid="roster">
               {players.map((p) => {
@@ -380,10 +468,17 @@ export default function Lobby() {
                       {p.user_id === userId && <span className="text-[#ffc93c] text-sm">(you)</span>}
                       {!p.connected && <span className="text-[#e8503a] text-sm">reconnecting…</span>}
                     </div>
-                    <span className={`text-sm ${p.is_ready ? 'text-[#6ab04c]' : 'text-[#ffc93c]'}`}>{p.is_ready ? 'Ready' : 'Not ready'}</span>
+                    {!quickRoom && (
+                      <span className={`text-sm ${p.is_ready ? 'text-[#6ab04c]' : 'text-[#ffc93c]'}`}>{p.is_ready ? 'Ready' : 'Not ready'}</span>
+                    )}
                   </div>
                 );
               })}
+              {quickRoom && Array.from({ length: Math.max(0, MAX_PLAYERS - players.length) }, (_, i) => (
+                <div key={`bot-${i}`} className="flex items-center gap-2 p-1.5 md:p-2.5 bg-[#3a2110] pixel-border text-[#f4e7c3]/50">
+                  <Bot className="w-4 h-4" /> <span>Bot (unless someone joins)</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -417,22 +512,22 @@ export default function Lobby() {
             {charNotice && <p className="text-[#ffb36b] text-sm mt-2 text-center">{charNotice}</p>}
           </div>
 
-          {!isReady && (
+          {!quickRoom && !isReady && (
             <Button onClick={() => setPlayerReady(true, roomCode, userId)} size="xl" className="w-full" data-testid="lobby-ready">
               <Check className="w-5 h-5" /> Ready
             </Button>
           )}
-          {isReady && !canStart && (
+          {!quickRoom && isReady && !canStart && (
             <div className="p-3 bg-[#6ab04c]/20 border-2 border-[#6ab04c] text-center text-[#b6e3a1] font-semibold">
               You're ready. Waiting for {players.length < MIN_PLAYERS ? 'another player' : 'everyone to ready up'}…
             </div>
           )}
-          {isHost && canStart && (
+          {!quickRoom && isHost && canStart && (
             <Button onClick={startGame} size="xl" className="w-full animate-pulse" data-testid="lobby-start">
               <Play className="w-5 h-5" /> Start match
             </Button>
           )}
-          {!isHost && canStart && (
+          {!quickRoom && !isHost && canStart && (
             <div className="p-3 bg-[#6ab04c]/20 border-2 border-[#6ab04c] text-center text-[#b6e3a1] font-semibold">
               Everyone's ready. Waiting for the host to start…
             </div>

@@ -14,7 +14,7 @@ const CONFETTI = ['#fbbf24', '#f59e0b', '#ef4444', '#ec4899', '#a855f7'];
 
 export default function Results() {
   const navigate = useNavigate();
-  const { winner, gameMessage, players, gameMode, resetMatch, setRoomCode } = useGameStore();
+  const { winner, gameMessage, players, gameMode, resetMatch, setRoomCode, quickPlay } = useGameStore();
   const { leaveRoom } = useSocket();
   const playedSound = useRef(false);
   const playerWon = winner?.id === 'player';
@@ -74,6 +74,13 @@ export default function Results() {
     resetMatch();
     clearMatchConfig();
     navigate('/lobby', { replace: true });
+  };
+  // Another Quick Play match with whoever is around.
+  const quickAgain = () => {
+    leaveFinishedRoom();
+    resetMatch();
+    clearMatchConfig();
+    navigate('/quick', { replace: true });
   };
   const toSolo = () => {
     resetMatch();
@@ -136,9 +143,16 @@ export default function Results() {
 
           <div className="flex flex-wrap gap-2 md:gap-3 justify-center">
             {online ? (
-              <Button onClick={toLobby} size="lg" className="gap-2" data-testid="results-lobby">
-                <Users className="w-5 h-5" /> Back to room
-              </Button>
+              <>
+                {quickPlay && (
+                  <Button onClick={quickAgain} size="lg" className="gap-2" data-testid="results-quick">
+                    <RotateCcw className="w-5 h-5" /> Play again
+                  </Button>
+                )}
+                <Button onClick={toLobby} variant={quickPlay ? 'secondary' : 'default'} size="lg" className="gap-2" data-testid="results-lobby">
+                  <Users className="w-5 h-5" /> {quickPlay ? 'Stay with this group' : 'Back to room'}
+                </Button>
+              </>
             ) : (
               <>
                 <Button onClick={rematch} size="lg" className="gap-2" data-testid="results-rematch">

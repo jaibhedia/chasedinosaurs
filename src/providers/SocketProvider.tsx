@@ -22,6 +22,9 @@ export interface RoomResponse {
   roomCode: string;
   players: LobbyPlayer[];
   room: { map_id: string };
+  /** Quick Play room: starts itself at `startsAt` (server time). */
+  quick?: boolean;
+  startsAt?: number | null;
 }
 
 interface SocketContextType {
@@ -42,6 +45,8 @@ interface SocketContextType {
     characterId: number;
     playerName?: string;
   }) => Promise<RoomResponse>;
+  /** Matchmaking: join a Quick Play room that's filling, or open one. */
+  quickPlay: (data: { userId: string; characterId: number; playerName?: string }) => Promise<RoomResponse>;
   setPlayerReady: (isReady: boolean, roomCode?: string, userId?: string) => void;
   chooseCharacter: (characterId: number, playerName: string, roomCode: string, userId: string) => void;
   startGame: () => void;
@@ -116,6 +121,23 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       if (reason === 'io server disconnect') socket.connect();
     });
 
+    /**
+     * Phones suspend the page when it goes to the background or the screen locks, and can
+     * come back with a socket that still reads as connected but is dead (the server gave
+     * up on it). On return, probe it; if it doesn't answer quickly, reconnect. The
+     * 'connect' handler then re-attaches to the room, whose slot the server holds for 30s.
+     */
+    const checkConnection = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (!socket.connected) { socket.connect(); return; }
+      socket.timeout(2500).emit('time-sync', Date.now(), (err: unknown) => {
+        if (err) { socket.disconnect(); socket.connect(); }
+      });
+    };
+    document.addEventListener('visibilitychange', checkConnection);
+    window.addEventListener('online', checkConnection);
+    window.addEventListener('focus', checkConnection);
+
     socket.on('rejoin-failed', ({ reason }: { reason: string }) => {
       console.warn('[socket] rejoin failed:', reason);
     });
@@ -165,6 +187,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   const joinRoom: SocketContextType['joinRoom'] = (data) =>
     request('join-room', data, ['room-joined'], 'Join room');
 
+  const quickPlay: SocketContextType['quickPlay'] = (data) =>
+    request('quick-play', data, ['room-joined'], 'Quick play');
+
   const setPlayerReady = (isReady: boolean, roomCode?: string, userId?: string) => {
     // roomCode/userId let the server resolve us even if this socket lost its binding.
     socketRef.current?.emit('set-ready', { isReady, roomCode, userId });
@@ -187,6 +212,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         ensureConnected,
         createRoom,
         joinRoom,
+        quickPlay,
         setPlayerReady,
         chooseCharacter,
         startGame,

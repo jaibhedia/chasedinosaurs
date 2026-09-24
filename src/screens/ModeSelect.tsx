@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Check, User, Users } from 'lucide-react';
+import { ArrowLeft, Check, User, Users, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HowToPlay } from '@/components/HowToPlay';
 import { useGameStore } from '@/store/gameStore';
@@ -62,9 +62,9 @@ export default function ModeSelect() {
     initUserId();
   }, [initUserId]);
 
-  const pick = (mode: 'single-player' | 'multiplayer') => {
-    setGameMode(mode);
-    navigate(mode === 'multiplayer' ? '/lobby' : '/solo');
+  const pick = (to: '/solo' | '/quick' | '/lobby') => {
+    setGameMode(to === '/solo' ? 'single-player' : 'multiplayer');
+    navigate(to);
   };
 
   return (
@@ -84,31 +84,44 @@ export default function ModeSelect() {
             </div>
           </motion.div>
 
-          <div className="grid grid-cols-2 gap-3 md:gap-8">
+          <div className="grid grid-cols-3 gap-2 md:gap-6">
             <ModeCard
               title="Solo"
               tagline="You against three bots."
               taglineColor="#ffc93c"
-              bullets={['Easy, Normal or Hard bots', 'Works offline', 'Quick 60-second rounds']}
+              bullets={['Easy, Normal or Hard', 'Works offline']}
               bulletColor="#6ab04c"
-              cta="Play solo"
+              cta="Solo"
               icon={User}
               iconColor="text-sky-400"
               from={-100}
-              onClick={() => pick('single-player')}
+              onClick={() => pick('/solo')}
               testId="mode-solo"
             />
             <ModeCard
-              title="Multiplayer"
-              tagline="Friends, strangers, and bots in the empty seats."
-              taglineColor="#6ab04c"
-              bullets={['Room codes for friends', 'Public rooms', 'Proximity voice chat']}
+              title="Quick Play"
+              tagline="Online in seconds."
+              taglineColor="#ffc93c"
+              bullets={['Matched with whoever is on', 'Bots fill empty seats']}
               bulletColor="#ffc93c"
-              cta="Play online"
+              cta="Play now"
+              icon={Zap}
+              iconColor="text-yellow-300"
+              from={0}
+              onClick={() => pick('/quick')}
+              testId="mode-quick"
+            />
+            <ModeCard
+              title="Friends"
+              tagline="Your own room."
+              taglineColor="#6ab04c"
+              bullets={['Room code or invite link', 'Voice chat']}
+              bulletColor="#6ab04c"
+              cta="Rooms"
               icon={Users}
               iconColor="text-green-400"
               from={100}
-              onClick={() => pick('multiplayer')}
+              onClick={() => pick('/lobby')}
               testId="mode-multiplayer"
             />
           </div>

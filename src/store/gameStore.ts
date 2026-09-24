@@ -137,6 +137,8 @@ interface GameState {
   serverStartTime: number | null;
   roomPlayers: any[];
   roomCode: string | null;
+  /** The current room came from Quick Play (results then offers another quick match). */
+  quickPlay: boolean;
   multiplayerHiddenFill: boolean;
   /** In-game menu open → freeze the simulation. */
   paused: boolean;
@@ -159,6 +161,7 @@ interface GameState {
   setServerStartTime: (time: number | null) => void;
   setRoomPlayers: (players: any[]) => void;
   setRoomCode: (code: string | null) => void;
+  setQuickPlay: (value: boolean) => void;
   setMultiplayerHiddenFill: (value: boolean) => void;
   setPaused: (value: boolean) => void;
   setMinimap: (minimap: { w: number; h: number; dots: MinimapDot[] }) => void;
@@ -187,6 +190,7 @@ const initialState = {
   serverStartTime: null,
   roomPlayers: [],
   roomCode: null,
+  quickPlay: false,
   multiplayerHiddenFill: false,
   paused: false,
   minimap: { w: 0, h: 0, dots: [] as MinimapDot[] },
@@ -246,6 +250,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setServerStartTime: (time) => set({ serverStartTime: time }),
   setRoomPlayers: (players) => set({ roomPlayers: players }),
   setRoomCode: (code) => set({ roomCode: code }),
+  setQuickPlay: (value) => set({ quickPlay: value }),
   setMultiplayerHiddenFill: (value) => set({ multiplayerHiddenFill: value }),
   setPaused: (value) => set({ paused: value }),
   setMinimap: (minimap) => set({ minimap }),

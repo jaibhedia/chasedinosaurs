@@ -32,6 +32,7 @@ export default function App() {
         <Route path="/play" element={<ModeSelect />} />
         <Route path="/solo" element={<SoloSetup />} />
         <Route path="/lobby" element={<Lobby />} />
+        <Route path="/quick" element={<Lobby key="quick" quick />} />
         <Route path="/join/:code" element={<Lobby />} />
         <Route
           path="/game"

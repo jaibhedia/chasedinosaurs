@@ -61,6 +61,34 @@ interface Room {
   match: Match | null;
   /** Fires at the buzzer to settle the match. */
   endTimer: ReturnType<typeof setTimeout> | null;
+  /** Quick Play room: filled by matchmaking and started on a timer, no ready-up. */
+  quick: boolean;
+  /** Server time a Quick Play room starts, if it's counting down. */
+  startsAt: number | null;
+  autoStart: ReturnType<typeof setTimeout> | null;
+}
+
+/** How long a Quick Play room waits for more players before bots fill the seats. */
+const QUICK_WAIT_MS = 8000;
+/** Don't drop a new player into a room that's about to start without them seeing it. */
+const QUICK_JOIN_CUTOFF_MS = 1500;
+
+function newRoom(mapId: string, isPublic: boolean, host: LobbyPlayer, quick = false): Room {
+  return {
+    mapId,
+    isPublic,
+    players: [host],
+    hostUserId: host.user_id,
+    started: false,
+    serverStartTime: null,
+    graceTimers: new Map(),
+    voiceUsers: new Set(),
+    match: null,
+    endTimer: null,
+    quick,
+    startsAt: null,
+    autoStart: null,
+  };
 }
 
 /** In-memory room store, keyed by 6-char room code. */
@@ -97,6 +125,7 @@ function removePlayer(rc: string, room: Room, uid: string): void {
   room.players = room.players.filter((p) => p.user_id !== uid);
   if (room.players.length === 0) {
     if (room.endTimer) clearTimeout(room.endTimer);
+    if (room.autoStart) clearTimeout(room.autoStart);
     rooms.delete(rc);
     forgetRoom(rc);
     return;
@@ -114,6 +143,27 @@ function removePlayer(rc: string, room: Room, uid: string): void {
  * screen shows the same result. The room then drops back to the lobby, unready, so the
  * same group can go again.
  */
+/** Start the match: the server's clock, egg and buzzer take over from here. */
+function startMatch(rc: string): void {
+  const room = rooms.get(rc);
+  if (!room || room.started) return;
+  if (room.autoStart) clearTimeout(room.autoStart);
+  room.autoStart = null;
+  room.startsAt = null;
+  room.started = true;
+  room.serverStartTime = Date.now();
+  room.match = new Match(room.serverStartTime);
+  if (room.endTimer) clearTimeout(room.endTimer);
+  // A little after the buzzer, so the last claims in flight still land.
+  room.endTimer = setTimeout(() => finishMatch(rc), room.match.endAt - Date.now() + 150);
+  io.to(rc).emit('game-started', {
+    serverTime: room.serverStartTime,
+    now: Date.now(),
+    players: publicPlayers(room),
+    mapId: room.mapId,
+  });
+}
+
 function finishMatch(rc: string): void {
   const room = rooms.get(rc);
   if (!room?.match || room.match.ended) return;
@@ -122,6 +172,8 @@ function finishMatch(rc: string): void {
   room.endTimer = null;
   room.started = false;
   room.serverStartTime = null;
+  // A Quick Play group that stays together carries on as an ordinary room.
+  room.quick = false;
   for (const p of room.players) p.is_ready = false;
   io.to(rc).emit('match-result', result);
   io.to(rc).emit('room-update', { room: { map_id: room.mapId }, players: publicPlayers(room), readyPlayers: 0 });
@@ -272,18 +324,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       connected: true,
       socket_id: socket.id,
     };
-    rooms.set(roomCode, {
-      mapId: data.mapId || 'map-1',
-      isPublic: data.isPublic !== false,
-      players: [player],
-      hostUserId: data.userId,
-      started: false,
-      serverStartTime: null,
-      graceTimers: new Map(),
-      voiceUsers: new Set(),
-      match: null,
-      endTimer: null,
-    });
+    rooms.set(roomCode, newRoom(cleanStr(data.mapId, 16) || 'map-1', data.isPublic !== false, player));
     socket.data.userId = data.userId;
     socket.data.roomCode = roomCode;
     socket.join(roomCode);
@@ -343,7 +384,77 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       roomCode: data.roomCode,
       players: publicPlayers(room),
       room: { map_id: room.mapId },
+      quick: room.quick,
+      startsAt: room.startsAt,
+      now: Date.now(),
     });
+  });
+
+  /**
+   * Quick Play: drop the player into a Quick Play room that's still filling, or open a
+   * new one. Quick rooms start themselves QUICK_WAIT_MS after they open (sooner when
+   * full), and the empty seats are played by bots.
+   */
+  socket.on('quick-play', (data: any) => {
+    if (!rateOk(`${socket.id}:join`, 30, 60_000)) {
+      socket.emit('error', { message: 'Slow down — too many join attempts.' });
+      return;
+    }
+    if (typeof data?.userId !== 'string' || !data.userId) {
+      socket.emit('error', { message: 'Invalid session.' });
+      return;
+    }
+    const now = Date.now();
+    let rc: string | null = null;
+    for (const [code, r] of rooms) {
+      if (r.quick && !r.started && r.players.length < 4 && (r.startsAt ?? 0) - now > QUICK_JOIN_CUTOFF_MS) { rc = code; break; }
+    }
+    const player: LobbyPlayer = {
+      id: `p-${socket.id.slice(0, 8)}`,
+      player_name: cleanStr(data.playerName, 24) || 'Player',
+      user_id: data.userId,
+      is_ready: true, // nothing to ready up for; the timer starts it
+      character_id: cleanNum(data.characterId, 1, 4) || 1,
+      connected: true,
+      socket_id: socket.id,
+    };
+    let room: Room;
+    if (rc) {
+      room = rooms.get(rc)!;
+      player.character_id = resolveCharacter(room, player.character_id);
+      room.players.push(player);
+    } else {
+      if (rooms.size >= MAX_ROOMS) {
+        socket.emit('error', { message: 'Server is at capacity, try again shortly.' });
+        return;
+      }
+      rc = genRoomCode();
+      room = newRoom('map-1', false, player, true);
+      room.startsAt = now + QUICK_WAIT_MS;
+      const code = rc;
+      room.autoStart = setTimeout(() => startMatch(code), QUICK_WAIT_MS);
+      rooms.set(rc, room);
+    }
+    socket.data.userId = data.userId;
+    socket.data.roomCode = rc;
+    socket.join(rc);
+    io.to(rc).emit('player-joined', { players: publicPlayers(room), currentPlayers: room.players.length });
+    socket.emit('room-joined', {
+      roomCode: rc,
+      players: publicPlayers(room),
+      room: { map_id: room.mapId },
+      quick: true,
+      startsAt: room.startsAt,
+      now: Date.now(),
+    });
+    // A full room doesn't need to wait; a short beat lets the last arrival see it.
+    if (room.players.length >= 4) {
+      const code = rc;
+      if (room.autoStart) clearTimeout(room.autoStart);
+      room.startsAt = Date.now() + 1500;
+      io.to(rc).emit('room-update', { room: { map_id: room.mapId }, players: publicPlayers(room), startsAt: room.startsAt });
+      room.autoStart = setTimeout(() => startMatch(code), 1500);
+    }
   });
 
   /**
@@ -375,6 +486,8 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       room: { map_id: room.mapId },
       started: room.started,
       serverStartTime: room.serverStartTime,
+      quick: room.quick,
+      startsAt: room.startsAt,
       // A returning client resyncs the egg rather than trusting what it last saw.
       egg: room.match?.owner() ?? null,
       now: Date.now(),
@@ -449,18 +562,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       return;
     }
 
-    room.started = true;
-    room.serverStartTime = Date.now();
-    room.match = new Match(room.serverStartTime);
-    if (room.endTimer) clearTimeout(room.endTimer);
-    // A little after the buzzer, so the last claims in flight still land.
-    room.endTimer = setTimeout(() => finishMatch(rc), room.match.endAt - Date.now() + 150);
-    io.to(rc).emit('game-started', {
-      serverTime: room.serverStartTime,
-      now: Date.now(),
-      players: publicPlayers(room),
-      mapId: room.mapId,
-    });
+    startMatch(rc);
   });
 
   socket.on('get-public-rooms', () => {
