@@ -9,6 +9,7 @@ import { gameMaps } from '@/data/maps';
 import { useGameStore, type Character, type Difficulty } from '@/store/gameStore';
 import { saveMatchConfig } from '@/lib/matchConfig';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { ComingSoon } from '@/components/ComingSoon';
 
 const DIFFICULTIES: Array<{ id: Difficulty; label: string; hint: string; color: string }> = [
   { id: 'easy', label: 'Easy', hint: 'Slower bots that all chase you the same way', color: '#6ab04c' },
@@ -122,10 +123,13 @@ export default function SoloSetup() {
           ))}
         </div>
 
-        <Button onClick={() => navigate('/play')} variant="outline" size="lg" className="gap-2">
-          <ArrowLeft className="w-5 h-5" />
-          Back
-        </Button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button onClick={() => navigate('/play')} variant="outline" size="lg" className="gap-2">
+            <ArrowLeft className="w-5 h-5" />
+            Back
+          </Button>
+          <ComingSoon />
+        </div>
       </div>
     </main>
   );

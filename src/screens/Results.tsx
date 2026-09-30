@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Crown, Home, RotateCcw, Skull, Star, ThumbsUp, Trophy, Users } from 'lucide-react';
+import { Crown, Home, RotateCcw, Share2, Skull, Star, ThumbsUp, Trophy, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DinoSprite } from '@/components/DinoSprite';
 import { useGameStore } from '@/store/gameStore';
@@ -10,6 +10,7 @@ import { audioManager } from '@/utils/audioManager';
 import { clearMatchConfig, saveMatchConfig } from '@/lib/matchConfig';
 import { cannedRoast, type MatchRow } from '@/scene/botVoice';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { shareCard } from '@/lib/shareCard';
 
 const CONFETTI = ['#fbbf24', '#f59e0b', '#ef4444', '#ec4899', '#a855f7'];
 
@@ -18,6 +19,7 @@ export default function Results() {
   const { winner, gameMessage, players, gameMode, resetMatch, setRoomCode, quickPlay } = useGameStore();
   const { leaveRoom, socket } = useSocket();
   const [roast, setRoast] = useState<string | null>(null);
+  const [shareState, setShareState] = useState<'idle' | 'busy' | 'saved' | 'failed'>('idle');
   const playedSound = useRef(false);
   const playerWon = winner?.id === 'player';
   usePageTitle(playerWon ? 'Victory' : 'Results');
@@ -119,6 +121,28 @@ export default function Results() {
     navigate('/', { replace: true });
   };
 
+  // A picture of the result to post: the system share sheet on phones, a download elsewhere.
+  const share = async () => {
+    const me = players.find((p) => p.id === 'player');
+    if (!me || shareState === 'busy') return;
+    setShareState('busy');
+    try {
+      const result = await shareCard({
+        title: playerWon ? 'VICTORY!' : winner ? `${winner.character.name.toUpperCase()} WINS` : 'NO WINNER',
+        spriteId: me.character.spriteId,
+        color: me.character.color,
+        name: me.character.name,
+        heldS: Math.round((me.eggHeldMs ?? 0) / 1000),
+        grabs: me.eggHoldCount ?? 0,
+        roast,
+        won: playerWon,
+      });
+      setShareState(result === 'saved' ? 'saved' : 'idle');
+    } catch {
+      setShareState('failed');
+    }
+  };
+
   if (players.length === 0) return null;
   const title = !winner ? 'No winner' : playerWon ? 'Victory!' : 'Defeated!';
   const tone = playerWon ? '#ffc93c' : '#e8503a';
@@ -194,6 +218,17 @@ export default function Results() {
                 </Button>
               </>
             )}
+            <Button
+              onClick={share}
+              variant={playerWon ? 'default' : 'outline'}
+              size="lg"
+              className="gap-2"
+              disabled={shareState === 'busy'}
+              data-testid="results-share"
+            >
+              <Share2 className="w-5 h-5" />
+              {shareState === 'saved' ? 'Saved!' : shareState === 'failed' ? 'Try again' : playerWon ? 'Share win' : 'Share'}
+            </Button>
             <Button onClick={home} variant="outline" size="lg" className="gap-2">
               <Home className="w-5 h-5" /> Home
             </Button>

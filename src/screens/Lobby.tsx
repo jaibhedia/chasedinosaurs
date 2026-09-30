@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Bot, Check, Copy, Globe, Lock, Play, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ComingSoon } from '@/components/ComingSoon';
 import { DinoSprite } from '@/components/DinoSprite';
 import { useGameStore } from '@/store/gameStore';
 import { useSocket, type LobbyPlayer } from '@/providers/SocketProvider';
@@ -510,6 +511,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
               })}
             </div>
             {charNotice && <p className="text-[#ffb36b] text-sm mt-2 text-center">{charNotice}</p>}
+            <div className="mt-2 flex justify-center short:hidden"><ComingSoon /></div>
           </div>
 
           {!quickRoom && !isReady && (
