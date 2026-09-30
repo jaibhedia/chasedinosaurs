@@ -11,7 +11,7 @@ everyone else hunts them. Whoever is holding it when the timer hits zero wins.
 
 Play: **https://chasedinosaurs.fun** · Roadmap: [`ROADMAP.md`](ROADMAP.md)
 
-A product of **Abstract Studio**. Proprietary, see [License](#license).
+A product of **[Abstract Studio](https://abstractstudio.in)**. Proprietary, see [License](#license).
 
 ---
 
@@ -136,6 +136,6 @@ npm run apk       # build a debug APK from the command line (needs the Android S
 
 ## License
 
-Copyright © 2026 Abstract Studio. All rights reserved. See [`LICENSE`](LICENSE).
+Copyright © 2026 [Abstract Studio](https://abstractstudio.in). All rights reserved. See [`LICENSE`](LICENSE).
 Third-party art is credited in [`CREDITS.md`](CREDITS.md) and stays under its authors'
 licenses.

@@ -49,6 +49,7 @@ export function resolveSocketUrl(): string {
 export const SITE = {
   name: 'Chase Dinosaurs',
   studio: 'Abstract Studio',
+  studioUrl: 'https://abstractstudio.in',
   url: 'https://chasedinosaurs.fun',
   socials: {
     x: 'https://x.com/ShantanuSwami11',

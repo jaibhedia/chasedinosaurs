@@ -1,10 +1,23 @@
+import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 /**
- * Registers the service worker and, when a new version has downloaded, offers a reload.
- * Never during a match: the prompt waits until the player is back in the menus.
- * Only rendered on the web; the native apps ship their files and have no worker.
+ * Screens where reloading costs the player nothing, so a new version is applied as soon
+ * as it has downloaded. Asking first here meant testers and returning players kept
+ * running an old build: the offer only showed outside a match, and a plain refresh
+ * never swaps in a waiting service worker.
+ */
+const CALM = new Set(['/', '/play', '/solo', '/support', '/privacy', '/terms']);
+
+/** How often a tab left open checks for a new version. */
+const CHECK_EVERY_MS = 60 * 60 * 1000;
+
+/**
+ * Registers the service worker and keeps the game up to date. On calm screens a new
+ * version is applied straight away; in a lobby or on the results screen it asks first;
+ * during a match it waits. Only rendered on the web; the native apps ship their files
+ * and have no worker.
  */
 export function UpdatePrompt() {
   const location = useLocation();
@@ -12,10 +25,19 @@ export function UpdatePrompt() {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
+    onRegisteredSW: (_url, registration) => {
+      if (registration) setInterval(() => void registration.update().catch(() => {}), CHECK_EVERY_MS);
+    },
     onRegisterError: (err) => console.warn('[pwa] service worker registration failed', err),
   });
 
-  if (!needRefresh || location.pathname === '/game') return null;
+  const calm = CALM.has(location.pathname);
+
+  useEffect(() => {
+    if (needRefresh && calm) void updateServiceWorker(true);
+  }, [needRefresh, calm, updateServiceWorker]);
+
+  if (!needRefresh || calm || location.pathname === '/game') return null;
 
   return (
     <div

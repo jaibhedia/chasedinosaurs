@@ -4,7 +4,7 @@ Live game: **https://chasedinosaurs.fun**
 
 ## Code, game design and original art
 
-**Abstract Studio** (Shantanu Swami): game design, level design, audio, and the game's
+**[Abstract Studio](https://abstractstudio.in)** (Shantanu Swami): game design, level design, audio, and the game's
 original pixel art. The code was written with AI assistance; no game art is AI-generated.
 
 ## Third-party art (itch.io)

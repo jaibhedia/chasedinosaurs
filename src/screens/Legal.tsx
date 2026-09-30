@@ -18,9 +18,19 @@ function LegalLayout({ title, children }: { title: string; children: ReactNode }
           <p className="font-body mt-3 text-sm opacity-60">Last updated: {UPDATED}</p>
           <div className="font-body mt-6 space-y-5 text-base leading-relaxed">{children}</div>
         </article>
-        <p className="font-body mt-6 text-center text-xs text-[#f4e7c3]/40">© 2026 {SITE.studio}. All rights reserved.</p>
+        <p className="font-body mt-6 text-center text-xs text-[#f4e7c3]/40">
+          © 2026 <StudioLink />. All rights reserved.
+        </p>
       </div>
     </main>
+  );
+}
+
+function StudioLink() {
+  return (
+    <a href={SITE.studioUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-[#FFC93C]">
+      {SITE.studio}
+    </a>
   );
 }
 
@@ -43,7 +53,7 @@ export function Privacy() {
   return (
     <LegalLayout title="Privacy Policy">
       <p>
-        {SITE.name} is a free game made by {SITE.studio} (&ldquo;we&rdquo;, &ldquo;us&rdquo;). You do not need an
+        {SITE.name} is a free game made by <StudioLink /> (&ldquo;we&rdquo;, &ldquo;us&rdquo;). You do not need an
         account to play, and we collect only what it takes to run a multiplayer match.
       </p>
 
@@ -110,7 +120,7 @@ export function Terms() {
   return (
     <LegalLayout title="Terms & Conditions">
       <p>
-        {SITE.name} is made by {SITE.studio}. By playing, you agree to these Terms. If you don&rsquo;t agree,
+        {SITE.name} is made by <StudioLink />. By playing, you agree to these Terms. If you don&rsquo;t agree,
         please don&rsquo;t use the game.
       </p>
 

@@ -90,7 +90,12 @@ export default function Home() {
           <span aria-hidden="true">·</span>
           <Link to="/terms" className="hover:text-[#FFC93C] transition-colors">Terms</Link>
           <span aria-hidden="true">·</span>
-          <span>© 2026 {SITE.studio}</span>
+          <span>
+            © 2026{' '}
+            <a href={SITE.studioUrl} target="_blank" rel="noopener noreferrer" className="hover:text-[#FFC93C] transition-colors">
+              {SITE.studio}
+            </a>
+          </span>
         </div>
       </div>
     </main>
