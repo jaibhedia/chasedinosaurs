@@ -54,4 +54,8 @@ export const SITE = {
     x: 'https://x.com/ShantanuSwami11',
     telegram: 'https://t.me/shantanucsd',
   },
+  /** Donations. Shown on /support, on the web only (see Support.tsx). */
+  donate: {
+    evm: '0x0418d786f44F625b2Ee5fc9E68c4D396dfD4141d',
+  },
 } as const;

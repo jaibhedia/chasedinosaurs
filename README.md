@@ -20,7 +20,7 @@ A product of **Abstract Studio**. Proprietary, see [License](#license).
 ```
 .
 ├── src/            web app: React + TypeScript + Phaser 3 (Vite)
-│   ├── screens/    home, mode select, solo setup, lobby, play, results, legal
+│   ├── screens/    home, mode select, solo setup, lobby, play, results, support, legal
 │   ├── scene/      the Phaser game (gameScene.ts) and its bootstrap
 │   ├── components/ in-game HUD, touch controls, pause menu, voice chat
 │   ├── providers/  the app-wide Socket.IO connection

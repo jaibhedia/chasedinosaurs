@@ -13,6 +13,7 @@ import SoloSetup from '@/screens/SoloSetup';
 import Lobby from '@/screens/Lobby';
 import Results from '@/screens/Results';
 import { Privacy, Terms } from '@/screens/Legal';
+import Support from '@/screens/Support';
 
 // Phaser is most of the download; the menus shouldn't wait for it.
 const PlayScreen = lazy(() => import('@/screens/PlayScreen'));
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/results" element={<Results />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
+        <Route path="/support" element={<Support />} />
         {/* Links from the old site. */}
         <Route path="/mode-selection" element={<Navigate to="/play" replace />} />
         <Route path="/character-selection" element={<Navigate to="/solo" replace />} />
