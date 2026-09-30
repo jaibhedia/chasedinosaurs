@@ -63,21 +63,28 @@ export function CoachHints() {
     }
   }, [enabled, gamePhase, players, timeRemaining, hint, touch]);
 
+  // Centred by a full-width flex row, not left-1/2 + -translate-x-1/2: framer-motion
+  // writes its own `transform` for the slide-in, which wiped out the translate and
+  // left the hint hanging off to the right of centre.
   return (
-    <AnimatePresence>
-      {hint && (
-        <motion.div
-          key={hint.key}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          className="pointer-events-none fixed left-1/2 -translate-x-1/2 z-[60] px-panel px-4 py-2 text-center max-w-[80vw]"
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 4.5rem)' }}
-          data-testid="coach-hint"
-        >
-          <p className="px-heading text-[10px] sm:text-xs leading-relaxed text-[#ffc93c]">{hint.text}</p>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div
+      className="pointer-events-none fixed inset-x-0 z-[60] flex justify-center px-4"
+      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 4.5rem)' }}
+    >
+      <AnimatePresence>
+        {hint && (
+          <motion.div
+            key={hint.key}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="px-panel px-4 py-2 text-center max-w-[80vw]"
+            data-testid="coach-hint"
+          >
+            <p className="px-heading text-[10px] sm:text-xs leading-relaxed text-[#ffc93c]">{hint.text}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

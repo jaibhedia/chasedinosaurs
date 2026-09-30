@@ -82,6 +82,8 @@ const POWER_COLOR: Record<string, number> = {
   teleport: 0xa78bfa,
 };
 const LOCAL_PLAYER_SPRITE_FOLLOW = 1;
+/** Minimum time a dino keeps facing one way after turning. */
+const FACING_HOLD_MS = 180;
 const REMOTE_PLAYER_SPRITE_FOLLOW = 0.4;
 /** Cap (ms) on how far a remote player is dead-reckoned past its last packet, so a
  *  player who suddenly stops barely drifts. ~3 packets at the 30Hz send rate. */
@@ -257,6 +259,11 @@ export class GameScene extends Phaser.Scene {
   /** Observed bot velocity (px/s), smoothed, so bots can lead each other too. */
   private botVel: Record<string, { vx: number; vy: number }> = {};
   private botLastPos: Record<string, { x: number; y: number }> = {};
+  /** Which way each dino faces (true = left), and when it last turned. See faceToward. */
+  private facingLeft: Record<string, boolean> = {};
+  private facingAt: Record<string, number> = {};
+  /** Each bot's heading (x part), smoothed over a few frames. */
+  private botHeadX: Record<string, number> = {};
   /** Distance from the map edge to the inside of the hedge ring. */
   private arenaInset = 60;
 
@@ -355,6 +362,9 @@ export class GameScene extends Phaser.Scene {
     this.finalCallDone = false;
     this.botVel = {};
     this.botLastPos = {};
+    this.facingLeft = {};
+    this.facingAt = {};
+    this.botHeadX = {};
     this.lastRoleAt = 0;
     this.cullables = [];
     this.lastCullView = { x: NaN, y: NaN, w: 0, h: 0 };
@@ -735,14 +745,23 @@ export class GameScene extends Phaser.Scene {
       sprite.setPosition(nx, ny);
       sprite.setDepth(p.y);
 
-      const spr = sprite.getAt(1) as Phaser.GameObjects.Sprite;
-      if (!spr || spr.type !== 'Sprite') return;
+      // By name, not index: a power aura is inserted behind the dino, which shifted the
+      // indices and froze the dino's facing and animation for as long as the power ran.
+      const spr = sprite.getByName('dino') as Phaser.GameObjects.Sprite | null;
+      if (!spr) return;
 
       const moving = Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3;
       const sid = this.getSpriteId(p);
 
-      if (dx > 0.25) spr.setFlipX(false);
-      else if (dx < -0.25) spr.setFlipX(true);
+      // Humans face where they're heading: the local player's input velocity, a peer's
+      // reported one. Bots set their facing as they steer (moveTowards) or from the
+      // steering client's agent-state.
+      if (!p.isBot) {
+        const v = p.id === 'player' ? this.playerVelocity['player'] : this.remoteNet[p.id];
+        const sp = v ? Math.hypot(v.vx, v.vy) : 0;
+        if (v && sp > 20) this.faceToward(p.id, v.vx / sp);
+      }
+      spr.setFlipX(this.facingLeft[p.id] === true);
 
       if (moving && !p.isInvincible) {
         spr.play(`run_${sid}_anim`, true);
@@ -774,8 +793,8 @@ export class GameScene extends Phaser.Scene {
        * setScale is cheap by comparison (no texture work), but it is guarded by the same
        * check for free.
        */
-      const nameTag = sprite.getAt(2) as Phaser.GameObjects.Text;
-      const marker = sprite.getAt(3) as Phaser.GameObjects.Text;
+      const nameTag = sprite.getByName('name') as Phaser.GameObjects.Text | null;
+      const marker = sprite.getByName('marker') as Phaser.GameObjects.Text | null;
       const label = isSelf ? 'YOU' : p.character.name;
       const css = this.colorToCss(markerColor);
       if (nameTag) {
@@ -790,11 +809,8 @@ export class GameScene extends Phaser.Scene {
         if (marker.scaleX !== s) marker.setScale(s);
       }
 
-      const shadow = sprite.getAt(0) as Phaser.GameObjects.Ellipse;
-      if (shadow) {
-        const bob = moving ? Math.sin(this.time.now * 0.012) * 1.5 : 0;
-        spr.y = -12 + bob;
-      }
+      const bob = moving ? Math.sin(this.time.now * 0.012) * 1.5 : 0;
+      spr.y = -12 + bob;
 
       // Shielded dinos go see-through, not invisible, so you can still track them.
       sprite.setAlpha(p.isInvincible ? 0.5 : 1);
@@ -1684,6 +1700,25 @@ export class GameScene extends Phaser.Scene {
     return findSafeSpawnPosition(this.mapWidth, this.mapHeight, objects, existingPlayers, 100);
   }
 
+  /**
+   * Turn a dino to face its heading. `hx` is the x part of a unit direction.
+   *
+   * Facing used to follow how far the sprite moved each frame, so anything that nudged
+   * it backwards for a frame (the knock-apart on a steal, a bot's unstick slide, a
+   * network correction, the sprite catching up) turned the dino around while it ran
+   * forwards. Heading comes from intent instead. The dead zone keeps a near-vertical run
+   * from flickering left and right, and a dino holds a new facing for at least
+   * FACING_HOLD_MS so it can't spin back and forth on the spot.
+   */
+  private faceToward(id: string, hx: number) {
+    const left = hx < -0.2 ? true : hx > 0.2 ? false : null;
+    if (left === null || left === (this.facingLeft[id] === true)) return;
+    const now = this.time.now;
+    if (now - (this.facingAt[id] ?? -Infinity) < FACING_HOLD_MS) return;
+    this.facingLeft[id] = left;
+    this.facingAt[id] = now;
+  }
+
   private getSpriteId(p: Player): string {
     const ch = characters.find(c => c.id === p.character.id);
     return ch?.spriteId ?? p.character.spriteId ?? 'doux';
@@ -1724,8 +1759,9 @@ export class GameScene extends Phaser.Scene {
     const shadow = this.add.ellipse(0, 22, 50, 16, 0x000000, 0.3);
     container.add(shadow);
 
-    const spr = this.add.sprite(0, -16, `dino_${sid}`, 0);
+    const spr = this.add.sprite(0, -16, `dino_${sid}`, 0).setName('dino');
     spr.setScale(SPRITE_SCALE);
+    spr.setFlipX(this.facingLeft[p.id] === true);
     spr.play(`idle_${sid}_anim`, true);
     if (p.hasEgg) spr.setTint(0xfacc15);
     container.add(spr);
@@ -1733,7 +1769,7 @@ export class GameScene extends Phaser.Scene {
     const nameTag = this.add.text(0, -58, p.character.name, {
       fontSize: '13px', fontFamily: 'Arial', color: '#ffffff',
       stroke: '#000000', strokeThickness: 3,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setName('name');
     container.add(nameTag);
 
     const marker = this.add.text(0, -74, '▼', {
@@ -1742,13 +1778,12 @@ export class GameScene extends Phaser.Scene {
       color: '#ffffff',
       stroke: '#000000',
       strokeThickness: 3,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setName('marker');
     container.add(marker);
 
     // Egg-holder badge: a little egg perched on the dino's head so everyone can see
-    // who's carrying it at a glance. Added LAST (indices 4-6) so the per-frame draw
-    // loop's getAt(0..3) lookups stay valid. The sprite is rebuilt on every egg
-    // handoff (rebuildPlayerSprite), so this appears/disappears with the egg.
+    // who's carrying it at a glance. The sprite is rebuilt on every egg handoff
+    // (rebuildPlayerSprite), so this appears/disappears with the egg.
     if (p.hasEgg) {
       const eggShadow = this.add.ellipse(0, -39, 16, 6, 0x000000, 0.25);
       const eggBody = this.add.ellipse(0, -47, 14, 18, 0xfacc15).setStrokeStyle(2, 0x7a5b16, 1);
@@ -2018,6 +2053,7 @@ export class GameScene extends Phaser.Scene {
             t: this.time.now,
           };
           // Same as remote humans: position straight to the scene, store only on flag change.
+          if (typeof a.left === 'boolean') this.facingLeft[a.id] = a.left;
           const gp = this.gsPlayers.find((p) => p.id === a.id);
           if (gp) { gp.x = a.x; gp.y = a.y; }
           this.applyRemoteFlags(a.id, gp, a.isInvincible);
@@ -2061,6 +2097,7 @@ export class GameScene extends Phaser.Scene {
             y: Math.round(b.y),
             hasEgg: !!b.hasEgg,
             isInvincible: !!b.isInvincible,
+            left: this.facingLeft[b.id] === true,
           })),
         });
       }
@@ -2854,6 +2891,11 @@ export class GameScene extends Phaser.Scene {
       const steered = this.steerAround(player, ux, uy);
       ux = steered.x;
       uy = steered.y;
+      // Smoothed: right on top of its target a bot's heading swings side to side every
+      // frame, and facing that raw would spin the sprite.
+      const hx = (this.botHeadX[player.id] ?? ux) * 0.85 + ux * 0.15;
+      this.botHeadX[player.id] = hx;
+      this.faceToward(player.id, hx);
     }
     const actualSpeed = Math.max(speed, player.isBot ? 5.5 : 0);
     const nx = player.x + ux * actualSpeed;
