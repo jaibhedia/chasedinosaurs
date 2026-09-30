@@ -9,7 +9,10 @@ type Props = {
   cooldownMax: number;
   /** How long the power stays active (ms) — drives the deplete animation. */
   activeDuration?: number;
-  onActivate: () => void;
+  /** Pointer went down on the button (the scene fires the power as soon as it can). */
+  onPress: () => void;
+  /** Pointer lifted or left the button. */
+  onRelease: () => void;
   /** Diameter in px. Lets the same button scale across phone/tablet/desktop. */
   size?: number;
 };
@@ -25,7 +28,8 @@ export function PowerUpHudCluster({
   powerUpCooldown,
   cooldownMax,
   activeDuration = 3000,
-  onActivate,
+  onPress,
+  onRelease,
   size = 76,
 }: Props) {
   const stroke = Math.max(4, Math.round(size * 0.09));
@@ -125,12 +129,24 @@ export function PowerUpHudCluster({
         <motion.button
           type="button"
           aria-label="Activate power-up"
-          disabled={!tappable}
-          onMouseDown={(e) => { e.preventDefault(); if (tappable) onActivate(); }}
-          onTouchStart={(e) => { e.preventDefault(); if (tappable) onActivate(); }}
+          aria-disabled={!tappable}
+          // Pointer events, always live: the scene decides whether the power can fire and
+          // holds a press until it can. (onTouchStart + onMouseDown double-fired on phones,
+          // since React's touch listeners are passive and can't cancel the emulated mouse
+          // event, and `disabled` swallowed presses made a beat before "ready".)
+          onPointerDown={(e) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+            onPress();
+          }}
+          onPointerUp={onRelease}
+          onPointerCancel={onRelease}
+          onLostPointerCapture={onRelease}
+          onContextMenu={(e) => e.preventDefault()}
           className="absolute flex items-center justify-center rounded-full"
           style={{
             inset: stroke + 3,
+            touchAction: 'none',
             background: innerBg,
             boxShadow: tappable
               ? `0 0 14px ${ringColor}, inset 0 -3px 6px rgba(0,0,0,0.4)`

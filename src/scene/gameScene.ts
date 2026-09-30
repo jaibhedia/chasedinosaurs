@@ -87,7 +87,7 @@ const LOCAL_PLAYER_SPRITE_FOLLOW = 1;
 const STICK_DEADZONE = 0.15;
 const STICK_FULL = 0.6;
 /** A power tap this early (ms) before the power is ready still fires when it becomes ready. */
-const POWER_BUFFER_MS = 250;
+const POWER_BUFFER_MS = 400;
 const SPEED_BOOST_MULT = 2.5;
 /** Minimum time a dino keeps facing one way after turning. */
 const FACING_HOLD_MS = 180;
@@ -725,7 +725,10 @@ export class GameScene extends Phaser.Scene {
         this.updateMovement(dt);
         this.updateBots(dt);
         this.updateTagging();
-        this.updatePowerUps(dt);
+        // Real elapsed time (capped), not the sim step: the sim step is clamped to 1/30s,
+        // so on a phone below 30fps cooldowns ran slower than the match clock and the
+        // button's ring, and the power "wasn't ready" when it looked ready.
+        this.updatePowerUps(Math.min(delta, 250) / 1000);
         this.updateCameraLead(dt);
       } else {
         audioManager.stopRunning(); // not in play (countdown) — no footsteps
@@ -3281,8 +3284,15 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Fire the local player's power if a press is waiting. Space and the touch button both
-   * land here. A press is kept for POWER_BUFFER_MS, so tapping just before the power is
-   * ready still fires it the moment it is, instead of being silently dropped.
+   * land here.
+   *
+   * A press waits for as long as the key or button is held, plus POWER_BUFFER_MS after a
+   * quick tap, and fires the moment the power is ready. Presses used to count only if
+   * the power was ready at that instant, and the button's ring (animated on the wall
+   * clock) can look full a beat before the cooldown (game time, which stops for hit-stop
+   * and slows on a struggling phone) has actually run out. So an early press was dropped
+   * and holding it did nothing: you had to let go and press again. One press still fires
+   * once: holding doesn't auto-repeat after the cooldown.
    */
   private tryQueuedPower() {
     if (touchInput.powerAt) {
@@ -3290,7 +3300,8 @@ export class GameScene extends Phaser.Scene {
       touchInput.powerAt = 0;
     }
     if (!this.powerRequestAt) return;
-    if (performance.now() - this.powerRequestAt > POWER_BUFFER_MS) {
+    const held = this.gsKeys[' '] === true || touchInput.powerHeld;
+    if (!held && performance.now() - this.powerRequestAt > POWER_BUFFER_MS) {
       this.powerRequestAt = 0;
       return;
     }

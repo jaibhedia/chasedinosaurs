@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useGameStore } from '@/store/gameStore';
 import { PowerUpHudCluster } from '@/components/PowerUpHudCluster';
 import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
-import { pressPower, setStick } from '@/lib/touchInput';
+import { pressPower, releasePower, setStick } from '@/lib/touchInput';
 
 interface MobileControlsProps {
   powerUpReady?: boolean;
@@ -117,7 +117,8 @@ export default function MobileControls({
           powerUpCooldown={powerUpCooldown}
           cooldownMax={cooldownMax}
           activeDuration={activeDuration}
-          onActivate={pressPower}
+          onPress={pressPower}
+          onRelease={releasePower}
           size={72}
         />
       </div>

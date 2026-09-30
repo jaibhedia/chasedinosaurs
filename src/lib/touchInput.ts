@@ -10,8 +10,10 @@ export const touchInput = {
   /** Stick deflection, -1..1 on each axis, length at most 1. */
   x: 0,
   y: 0,
-  /** performance.now() of the last power tap, 0 when none is waiting. */
+  /** performance.now() of the last power press, 0 when none is waiting. */
   powerAt: 0,
+  /** The power button is being held down. A held press waits until the power is ready. */
+  powerHeld: false,
 };
 
 export function setStick(x: number, y: number) {
@@ -21,10 +23,16 @@ export function setStick(x: number, y: number) {
 
 export function pressPower() {
   touchInput.powerAt = performance.now();
+  touchInput.powerHeld = true;
+}
+
+export function releasePower() {
+  touchInput.powerHeld = false;
 }
 
 export function resetTouchInput() {
   touchInput.x = 0;
   touchInput.y = 0;
   touchInput.powerAt = 0;
+  touchInput.powerHeld = false;
 }
