@@ -63,7 +63,10 @@ export function resolveSocketUrl(): string {
     }
   } catch { /* storage blocked — fall through */ }
 
-  const fromBuild = import.meta.env.VITE_SOCKET_URL as string | undefined;
+  // Tolerate a pasted value with a trailing comma, space or slash (or a comma list, as in
+  // CORS_ORIGIN): "https://x.onrender.com," once shipped as "wss://x.onrender.com,/socket.io".
+  const rawBuild = (import.meta.env.VITE_SOCKET_URL as string | undefined) ?? '';
+  const fromBuild = validServerUrl(rawBuild.split(',')[0].trim());
   if (fromBuild) return fromBuild;
 
   const host = window.location.hostname;
