@@ -2,9 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Touch-game viewport: lock zoom (pinch would break the joystick) and extend under
-         the notch/home indicator so controls can pad with safe-area insets. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- Extend under the notch/home indicator so controls can pad with safe-area insets.
+         Zoom stays allowed so menus and legal pages can be enlarged; the game screen
+         blocks pinch itself with touch-action: none. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Chase Dinosaurs | Grab the egg. Survive the chase.</title>
     <meta name="description" content="A fast 60-second chase game. One golden egg: grab it, and survive everyone hunting you for it. Play solo against bots or with friends. Free, in your browser." />
     <meta name="application-name" content="Chase Dinosaurs" />

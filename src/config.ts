@@ -3,8 +3,9 @@
  *
  * Resolved at runtime, in this order:
  *
- *  1. `?server=https://…` in the page URL. Remembered in localStorage, so a tester can
- *     point one device at a staging server without a rebuild. `?server=` (empty) clears it.
+ *  1. `?server=https://…` in the page URL, on localhost and Vercel previews only (see
+ *     overrideAllowed). Remembered in localStorage, so a tester can point one device at a
+ *     staging server without a rebuild. `?server=` (empty) clears it.
  *  2. `VITE_SOCKET_URL`, inlined at build time. Set it in the host's build env.
  *  3. Running on localhost → the local dev server on :3001.
  *  4. The production server.
@@ -25,18 +26,47 @@ function isNativeShell(): boolean {
   return window.location.protocol === 'capacitor:' || Capacitor.isNativePlatform();
 }
 
+/**
+ * `?server=` is a testing aid, so it's honoured only where testers are: local dev and
+ * Vercel preview deployments. On the real site and in the store apps it's ignored and
+ * any saved override is wiped, so a crafted link can't point a player's game (and
+ * their player id) at someone else's server.
+ */
+function overrideAllowed(): boolean {
+  if (isNativeShell()) return false;
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.vercel.app');
+}
+
+function validServerUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveSocketUrl(): string {
   try {
-    const param = new URLSearchParams(window.location.search).get('server');
-    if (param !== null) {
-      if (param) localStorage.setItem(OVERRIDE_KEY, param);
-      else localStorage.removeItem(OVERRIDE_KEY);
+    if (overrideAllowed()) {
+      const param = new URLSearchParams(window.location.search).get('server');
+      if (param !== null) {
+        const url = param ? validServerUrl(param) : null;
+        if (url) localStorage.setItem(OVERRIDE_KEY, url);
+        else localStorage.removeItem(OVERRIDE_KEY);
+      }
+      const saved = localStorage.getItem(OVERRIDE_KEY);
+      if (saved) return saved;
+    } else {
+      localStorage.removeItem(OVERRIDE_KEY);
     }
-    const saved = localStorage.getItem(OVERRIDE_KEY);
-    if (saved) return saved;
   } catch { /* storage blocked — fall through */ }
 
-  const fromBuild = import.meta.env.VITE_SOCKET_URL as string | undefined;
+  // Tolerate a pasted value with a trailing comma, space or slash (or a comma list, as in
+  // CORS_ORIGIN): "https://x.onrender.com," once shipped as "wss://x.onrender.com,/socket.io".
+  const rawBuild = (import.meta.env.VITE_SOCKET_URL as string | undefined) ?? '';
+  const fromBuild = validServerUrl(rawBuild.split(',')[0].trim());
   if (fromBuild) return fromBuild;
 
   const host = window.location.hostname;

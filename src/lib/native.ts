@@ -26,7 +26,7 @@ export async function initNative(navigateBack: () => void): Promise<void> {
   void App.addListener('backButton', () => {
     const path = window.location.pathname;
     if (path === '/game') {
-      // Never drop out of a match by accident: open the pause menu instead.
+      // Never drop out of a match by accident: open the menu instead (it only pauses solo).
       const store = useGameStore.getState();
       store.setPaused(!store.paused);
     } else if (path === '/' || path === '') {

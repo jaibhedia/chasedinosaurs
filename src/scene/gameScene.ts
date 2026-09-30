@@ -712,9 +712,12 @@ export class GameScene extends Phaser.Scene {
       if (this.matchEnded) return;
     }
 
-    // The in-game menu freezes the simulation; sprites below still render so the
-    // frozen world stays visible behind the overlay.
-    if (!store.paused) {
+    // Solo: the in-game menu freezes the simulation; sprites below still render so the
+    // frozen world stays visible behind the overlay. Online there is no pause: the menu
+    // is only an overlay. Freezing here used to stop your own dino and, on the client
+    // steering the bots, every bot in the room, while the match clock kept running.
+    const frozen = store.paused && !this.isOnlineMp;
+    if (!frozen) {
       if (this.currentPhase === 'playing' && Date.now() < this.hitStopUntil) {
         // Hit-stop: hold the frame for a beat so a steal lands.
       } else if (this.currentPhase === 'playing') {
@@ -3305,7 +3308,7 @@ export class GameScene extends Phaser.Scene {
       this.powerRequestAt = 0;
       return;
     }
-    if (this.currentPhase !== 'playing' || useGameStore.getState().paused) return;
+    if (this.currentPhase !== 'playing' || (useGameStore.getState().paused && !this.isOnlineMp)) return;
     const hp = this.gsPlayers.find((p) => p.id === 'player');
     if (hp && hp.powerUpReady && !hp.powerUpActive && !hp.powerUpCooldown) {
       this.powerRequestAt = 0;

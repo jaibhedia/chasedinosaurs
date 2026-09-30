@@ -8,8 +8,9 @@ import { audioManager } from '@/utils/audioManager';
 import { clearMatchConfig } from '@/lib/matchConfig';
 
 /**
- * In-game pause menu. It's shown whenever the store is `paused` (the HUD ☰ button
- * sets that), so opening the menu also freezes the simulation in gameScene.update().
+ * In-game menu, shown whenever the store is `paused` (the HUD ☰ button sets that).
+ * Solo: it pauses the match (gameScene.update() freezes the simulation). Online: it never
+ * pauses anything; the match, your dino and the bots keep going behind it.
  */
 export default function GameMenu() {
   const navigate = useNavigate();
@@ -44,7 +45,7 @@ export default function GameMenu() {
   };
 
   const items: Array<{ label: string; icon: typeof Play; onClick: () => void; tone: string }> = [
-    { label: 'Resume', icon: Play, onClick: resume, tone: '#6ab04c' },
+    { label: online ? 'Back to match' : 'Resume', icon: Play, onClick: resume, tone: '#6ab04c' },
     // A room's match can't be restarted by one player.
     ...(online ? [] : [{ label: 'Restart match', icon: RotateCcw, onClick: restart, tone: '#5fcde4' }]),
     ...(online ? [{ label: 'Leave to lobby', icon: Users, onClick: () => exit('/lobby'), tone: '#ffc93c' }] : []),
@@ -60,7 +61,7 @@ export default function GameMenu() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
-          <div className="absolute inset-0 bg-black/55" onClick={resume} />
+          <div className={`absolute inset-0 ${online ? 'bg-black/30' : 'bg-black/55'}`} onClick={resume} />
           <motion.div
             className="relative px-panel px-4 py-4 sm:px-8 sm:py-7 flex flex-col items-stretch gap-2 sm:gap-3 w-[min(82vw,320px)] max-h-[88dvh] overflow-y-auto"
             initial={{ scale: 0.85, y: 20 }}
@@ -69,8 +70,11 @@ export default function GameMenu() {
             transition={{ type: 'spring', stiffness: 260, damping: 22 }}
           >
             <p className="px-heading text-center text-base sm:text-2xl mb-0.5 sm:mb-1" style={{ color: '#ffc93c', textShadow: '3px 3px 0 #11111c' }}>
-              PAUSED
+              {online ? 'MENU' : 'PAUSED'}
             </p>
+            {online && (
+              <p className="text-center text-[#f4e7c3]/80 text-sm -mt-1 mb-1">The match keeps going. Online games can&apos;t be paused.</p>
+            )}
             {items.map(({ label, icon: Icon, onClick, tone }) => (
               <button
                 key={label}
