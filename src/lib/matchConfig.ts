@@ -44,6 +44,9 @@ export function restoreMatchConfig(): boolean {
       roomCode: cfg.roomCode ?? null,
       multiplayerHiddenFill: cfg.multiplayerHiddenFill ?? false,
     });
+    // The player id lives in localStorage; a hard refresh starts with it unset, and
+    // without it the socket can't rejoin the room (see SocketProvider.rejoinRoom).
+    useGameStore.getState().initUserId();
     return true;
   } catch {
     return false;

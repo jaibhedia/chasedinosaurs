@@ -128,8 +128,7 @@ export function PowerUpHudCluster({
 
         <motion.button
           type="button"
-          aria-label="Activate power-up"
-          aria-disabled={!tappable}
+          aria-label={tappable ? 'Activate power-up' : 'Power-up charging, press to use when ready'}
           // Pointer events, always live: the scene decides whether the power can fire and
           // holds a press until it can. (onTouchStart + onMouseDown double-fired on phones,
           // since React's touch listeners are passive and can't cancel the emulated mouse
@@ -143,6 +142,14 @@ export function PowerUpHudCluster({
           onPointerCancel={onRelease}
           onLostPointerCapture={onRelease}
           onContextMenu={(e) => e.preventDefault()}
+          // Keyboard (Enter/Space on the focused button) and screen readers produce a click
+          // with no pointer behind it (detail 0): treat it as a quick tap. Pointer clicks
+          // were already handled by onPointerDown.
+          onClick={(e) => {
+            if (e.detail !== 0) return;
+            onPress();
+            onRelease();
+          }}
           className="absolute flex items-center justify-center rounded-full"
           style={{
             inset: stroke + 3,

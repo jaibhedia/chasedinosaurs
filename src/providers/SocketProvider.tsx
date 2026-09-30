@@ -52,6 +52,12 @@ interface SocketContextType {
   chooseCharacter: (characterId: number, playerName: string, roomCode: string, userId: string) => void;
   startGame: () => void;
   leaveRoom: () => void;
+  /**
+   * Re-attach to the room in the store, if this is an online match. Connecting does this
+   * on its own; call it when the room was restored after the socket had already
+   * connected (a hard refresh on /game).
+   */
+  rejoinRoom: () => void;
 }
 
 const SocketContext = createContext<SocketContextType | null>(null);
@@ -206,6 +212,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   // Leaves the room without dropping the connection, so the player can join another.
   const leaveRoom = () => socketRef.current?.emit('leave-room');
 
+  const rejoinRoom = () => {
+    const s = socketRef.current;
+    const { gameMode, roomCode, userId } = useGameStore.getState();
+    if (s?.connected && gameMode === 'multiplayer' && roomCode && userId) {
+      s.emit('rejoin-room', { roomCode, userId });
+    }
+  };
+
   return (
     <SocketContext.Provider
       value={{
@@ -219,6 +233,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         chooseCharacter,
         startGame,
         leaveRoom,
+        rejoinRoom,
       }}
     >
       {children}
