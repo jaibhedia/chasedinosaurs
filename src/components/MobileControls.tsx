@@ -3,26 +3,28 @@ import { motion } from 'framer-motion';
 import { useGameStore } from '@/store/gameStore';
 import { PowerUpHudCluster } from '@/components/PowerUpHudCluster';
 import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
+import { pressPower, setStick } from '@/lib/touchInput';
 
 interface MobileControlsProps {
-  onDirectionChange: (direction: { x: number; y: number }) => void;
-  onPowerUpPress: () => void;
   powerUpReady?: boolean;
   powerUpActive?: boolean;
   powerUpCooldown?: number;
   powerUpCooldownMax?: number;
 }
 
+/** How far (px) the knob travels from the centre at full deflection. */
+const MAX_DISTANCE = 48;
+/** Touches this far outside the pad still grab it, so a thumb that lands a bit off counts. */
+const GRAB_MARGIN = 28;
+
 export default function MobileControls({
-  onDirectionChange,
-  onPowerUpPress,
   powerUpReady = false,
   powerUpActive = false,
   powerUpCooldown = 0,
   powerUpCooldownMax,
 }: MobileControlsProps) {
   const joystickRef = useRef<HTMLDivElement>(null);
-  const [joystickPosition, setJoystickPosition] = useState({ x: 0, y: 0 });
+  const knobRef = useRef<HTMLDivElement>(null);
   const [isTouching, setIsTouching] = useState(false);
   const touchIdRef = useRef<number | null>(null);
   // Shared detection — identical to GameHUD, so controls + HUD never disagree.
@@ -32,78 +34,70 @@ export default function MobileControls({
   const activeDuration = selectedCharacter?.powerUp?.duration ?? 3000;
 
   useEffect(() => {
-    const handleTouchStart = (e: TouchEvent) => {
-      if (!joystickRef.current) return;
-
-      const touch = Array.from(e.changedTouches).find(t => {
-        const rect = joystickRef.current!.getBoundingClientRect();
-        return (
-          t.clientX >= rect.left &&
-          t.clientX <= rect.right &&
-          t.clientY >= rect.top &&
-          t.clientY <= rect.bottom
-        );
-      });
-
-      if (touch) {
-        e.preventDefault();
-        touchIdRef.current = touch.identifier;
-        setIsTouching(true);
-        handleTouchMove(e);
-      }
+    // The knob is moved by writing its transform directly, not through React state, so
+    // it tracks the thumb without a re-render per touchmove.
+    const placeKnob = (x: number, y: number) => {
+      if (knobRef.current) knobRef.current.style.transform = `translate(${x - 32}px, ${y - 32}px)`;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
       if (!joystickRef.current || touchIdRef.current === null) return;
-
+      const touch = Array.from(e.touches).find((t) => t.identifier === touchIdRef.current);
+      if (!touch) return;
       e.preventDefault();
 
-      const touch = Array.from(e.touches).find(t => t.identifier === touchIdRef.current);
-      if (!touch) return;
-
       const rect = joystickRef.current.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-
-      const deltaX = touch.clientX - centerX;
-      const deltaY = touch.clientY - centerY;
-
-      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-      const maxDistance = 48;
-
-      let x = deltaX;
-      let y = deltaY;
-
-      if (distance > maxDistance) {
-        x = (deltaX / distance) * maxDistance;
-        y = (deltaY / distance) * maxDistance;
+      let x = touch.clientX - (rect.left + rect.width / 2);
+      let y = touch.clientY - (rect.top + rect.height / 2);
+      const distance = Math.hypot(x, y);
+      if (distance > MAX_DISTANCE) {
+        x = (x / distance) * MAX_DISTANCE;
+        y = (y / distance) * MAX_DISTANCE;
       }
+      placeKnob(x, y);
+      setStick(x / MAX_DISTANCE, y / MAX_DISTANCE);
+    };
 
-      setJoystickPosition({ x, y });
-      onDirectionChange({ x: x / maxDistance, y: y / maxDistance });
+    const handleTouchStart = (e: TouchEvent) => {
+      if (!joystickRef.current || touchIdRef.current !== null) return;
+      const rect = joystickRef.current.getBoundingClientRect();
+      const touch = Array.from(e.changedTouches).find(
+        (t) =>
+          t.clientX >= rect.left - GRAB_MARGIN &&
+          t.clientX <= rect.right + GRAB_MARGIN &&
+          t.clientY >= rect.top - GRAB_MARGIN &&
+          t.clientY <= rect.bottom + GRAB_MARGIN,
+      );
+      if (!touch) return;
+      e.preventDefault();
+      touchIdRef.current = touch.identifier;
+      setIsTouching(true);
+      handleTouchMove(e);
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      const touch = Array.from(e.changedTouches).find(t => t.identifier === touchIdRef.current);
-      if (touch) {
-        e.preventDefault();
-        touchIdRef.current = null;
-        setIsTouching(false);
-        setJoystickPosition({ x: 0, y: 0 });
-        onDirectionChange({ x: 0, y: 0 });
-      }
+      const touch = Array.from(e.changedTouches).find((t) => t.identifier === touchIdRef.current);
+      if (!touch) return;
+      e.preventDefault();
+      touchIdRef.current = null;
+      setIsTouching(false);
+      placeKnob(0, 0);
+      setStick(0, 0);
     };
 
     document.addEventListener('touchstart', handleTouchStart, { passive: false });
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd, { passive: false });
+    document.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
     return () => {
       document.removeEventListener('touchstart', handleTouchStart);
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
+      document.removeEventListener('touchcancel', handleTouchEnd);
+      setStick(0, 0);
     };
-  }, [onDirectionChange]);
+  }, []);
 
   if (!showControls) return null;
 
@@ -123,7 +117,7 @@ export default function MobileControls({
           powerUpCooldown={powerUpCooldown}
           cooldownMax={cooldownMax}
           activeDuration={activeDuration}
-          onActivate={onPowerUpPress}
+          onActivate={pressPower}
           size={72}
         />
       </div>
@@ -154,18 +148,20 @@ export default function MobileControls({
           </div>
 
           {/* Thumb knob — solid sun fill (no gradient), 64px so the centering offset holds. */}
-          <motion.div
-            className="absolute left-1/2 top-1/2 w-16 h-16 border-[3px] border-[#11111c] flex items-center justify-center shadow-[0_3px_0_rgba(0,0,0,0.5)]"
-            style={{
-              x: joystickPosition.x - 32,
-              y: joystickPosition.y - 32,
-              background: '#ffc93c',
-            }}
-            animate={{ scale: isTouching ? 1.06 : 1 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+          <div
+            ref={knobRef}
+            className="absolute left-1/2 top-1/2"
+            style={{ transform: 'translate(-32px, -32px)', willChange: 'transform' }}
           >
-            <div className="w-5 h-5 bg-[#11111c]/30 border border-[#11111c]/50" />
-          </motion.div>
+            <motion.div
+              className="w-16 h-16 border-[3px] border-[#11111c] flex items-center justify-center shadow-[0_3px_0_rgba(0,0,0,0.5)]"
+              style={{ background: '#ffc93c' }}
+              animate={{ scale: isTouching ? 1.06 : 1 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            >
+              <div className="w-5 h-5 bg-[#11111c]/30 border border-[#11111c]/50" />
+            </motion.div>
+          </div>
         </div>
         <p className="px-heading text-[9px] tracking-widest uppercase text-[#f4e7c3]">Move</p>
       </div>

@@ -8,6 +8,7 @@ import { PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, GAME_DURATION, checkCollision,
 import { getGameSocket, getServerOffset } from '@/lib/socketBridge';
 import { TUNING, PERSONAS, PERSONA_SPEED, assignRoles, ramp, type BotTuning, type Role } from './botTactics';
 import type { Difficulty } from '@/store/gameStore';
+import { touchInput, resetTouchInput } from '@/lib/touchInput';
 
 const CHAR_SPRITES: Record<string, { name: string }> = {
   doux: { name: 'doux' },
@@ -82,14 +83,18 @@ const POWER_COLOR: Record<string, number> = {
   teleport: 0xa78bfa,
 };
 const LOCAL_PLAYER_SPRITE_FOLLOW = 1;
+/** Touch stick: ignore deflection below this; full speed from STICK_FULL outwards. */
+const STICK_DEADZONE = 0.15;
+const STICK_FULL = 0.6;
+/** A power tap this early (ms) before the power is ready still fires when it becomes ready. */
+const POWER_BUFFER_MS = 250;
+const SPEED_BOOST_MULT = 2.5;
 /** Minimum time a dino keeps facing one way after turning. */
 const FACING_HOLD_MS = 180;
 const REMOTE_PLAYER_SPRITE_FOLLOW = 0.4;
 /** Cap (ms) on how far a remote player is dead-reckoned past its last packet, so a
  *  player who suddenly stops barely drifts. ~3 packets at the 30Hz send rate. */
 const REMOTE_EXTRAPOLATE_MS = 110;
-const CAMERA_FOLLOW_LERP_X = 0.24;
-const CAMERA_FOLLOW_LERP_Y = 0.24;
 const CAMERA_MAX_LEAD_X = 40;
 const CAMERA_MAX_LEAD_Y = 30;
 /** Gentle follow zoom — keeps the player framed without hiding the arena. */
@@ -222,6 +227,8 @@ export class GameScene extends Phaser.Scene {
   private gameOver = false;
   /** A beat of freeze when the egg changes hands with you involved (hit-stop). */
   private hitStopUntil = 0;
+  /** performance.now() of a power press that hasn't fired yet (0 = none). See tryQueuedPower. */
+  private powerRequestAt = 0;
 
   private playerSprites: { [id: string]: Phaser.GameObjects.Container } = {};
   private objSprites: { [id: string]: Phaser.GameObjects.Container } = {};
@@ -248,6 +255,8 @@ export class GameScene extends Phaser.Scene {
   private cameraTarget?: Phaser.GameObjects.Zone;
   private camTargetX = 0;
   private camTargetY = 0;
+  private camLeadX = 0;
+  private camLeadY = 0;
   private powerUpAuras: Record<string, Phaser.GameObjects.Arc> = {};
   /** Bot movement: detect stuck and recover. */
   private botStuckAccum: Record<string, { x: number; y: number; t: number }> = {};
@@ -349,6 +358,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    resetTouchInput();
+    this.powerRequestAt = 0;
     const store = useGameStore.getState();
     const { selectedCharacter, setGamePhase, setPlayers, setGameObjects, setTimeRemaining, setCountdownTimer } = store;
     if (!selectedCharacter) return;
@@ -620,13 +631,13 @@ export class GameScene extends Phaser.Scene {
       this.cameraTarget = this.add.zone(humanSprite.x, humanSprite.y, 2, 2);
       this.camTargetX = humanSprite.x;
       this.camTargetY = humanSprite.y;
-      this.cameras.main.startFollow(
-        this.cameraTarget,
-        true,
-        CAMERA_FOLLOW_LERP_X,
-        CAMERA_FOLLOW_LERP_Y
-      );
-      this.cameras.main.setDeadzone(28, 22);
+      this.camLeadX = 0;
+      this.camLeadY = 0;
+      // Lerp 1, no deadzone: the camera sits exactly on its target, and the target is the
+      // player plus an eased look-ahead (updateCameraLead). Smoothing the whole follow
+      // made the ground lag behind the dino, so a speed burst looked like it kicked in
+      // late and turns felt mushy.
+      this.cameras.main.startFollow(this.cameraTarget, true, 1, 1);
       // Gentle follow zoom (1.3 max) — clamp down on small viewports so more of the map stays visible.
       const zoom = Math.min(CAMERA_ZOOM, Math.max(1.0, this.scale.width / 1100));
       this.cameras.main.setZoom(zoom);
@@ -649,9 +660,9 @@ export class GameScene extends Phaser.Scene {
       this.gsKeys[k] = true;
       if (k === ' ' && this.currentPhase === 'playing') {
         e.preventDefault(); // space would scroll / trigger a focused button
-        const hp = this.gsPlayers.find((p) => p.id === 'player');
-        if (hp && hp.powerUpReady && !hp.powerUpActive && !hp.powerUpCooldown) {
-          this.activatePowerUp(hp);
+        if (!e.repeat) {
+          this.powerRequestAt = performance.now();
+          this.tryQueuedPower();
         }
       }
     };
@@ -659,8 +670,8 @@ export class GameScene extends Phaser.Scene {
       this.gsKeys[e.key.toLowerCase()] = false;
     };
     // Any focus/visibility loss → drop every held key so nothing sticks.
-    this.onWinBlur = () => { this.gsKeys = {}; };
-    this.onWinVisibility = () => { if (document.hidden) this.gsKeys = {}; };
+    this.onWinBlur = () => { this.gsKeys = {}; resetTouchInput(); };
+    this.onWinVisibility = () => { if (document.hidden) { this.gsKeys = {}; resetTouchInput(); } };
 
     window.addEventListener('keydown', this.onWinKeyDown);
     window.addEventListener('keyup', this.onWinKeyUp);
@@ -710,6 +721,7 @@ export class GameScene extends Phaser.Scene {
         // Time with the egg, for the results table. Online the server's tally replaces it.
         const holding = this.gsPlayers.find((p) => p.hasEgg);
         if (holding) holding.eggHeldMs = (holding.eggHeldMs ?? 0) + Math.min(delta, 250);
+        this.tryQueuedPower();
         this.updateMovement(dt);
         this.updateBots(dt);
         this.updateTagging();
@@ -2320,7 +2332,7 @@ export class GameScene extends Phaser.Scene {
   private updateMovement(dt: number) {
     const human = this.gsPlayers.find(p => p.id === 'player');
     if (!human) return;
-    const speedMul = human.speedBoostActive ? 2.5 : 1.0;
+    const speedMul = human.speedBoostActive ? SPEED_BOOST_MULT : 1.0;
     const infernoMul = this.isInInfernoSlowZone(human.x, human.y, PLAYER_SIZE) ? 0.72 : 1;
     const eggMul = human.hasEgg ? EGG_HOLDER_SPEED_MULT : 1;
     const now = Date.now();
@@ -2328,11 +2340,23 @@ export class GameScene extends Phaser.Scene {
     const speedPxPerSec = human.character.speed * 120 * speedMul * infernoMul * eggMul * slowEffectMul;
     let dirX = 0;
     let dirY = 0;
+    // How hard to run, 0..1. Keys are always full speed; the stick is analog.
+    let throttle = 1;
 
     if (this.gsKeys['w'] || this.gsKeys['arrowup']) dirY -= 1;
     if (this.gsKeys['s'] || this.gsKeys['arrowdown']) dirY += 1;
     if (this.gsKeys['a'] || this.gsKeys['arrowleft']) dirX -= 1;
     if (this.gsKeys['d'] || this.gsKeys['arrowright']) dirX += 1;
+    if (dirX === 0 && dirY === 0) {
+      // Touch stick: any angle, and a light push walks while a full push runs. Most of
+      // the travel is full speed so thumbs don't have to reach the rim to run.
+      const m = Math.hypot(touchInput.x, touchInput.y);
+      if (m > STICK_DEADZONE) {
+        dirX = touchInput.x / m;
+        dirY = touchInput.y / m;
+        throttle = 0.35 + 0.65 * Math.min(1, (m - STICK_DEADZONE) / (STICK_FULL - STICK_DEADZONE));
+      }
+    }
 
     const vel = this.playerVelocity[human.id] || { vx: 0, vy: 0 };
     const hasInput = dirX !== 0 || dirY !== 0;
@@ -2340,13 +2364,15 @@ export class GameScene extends Phaser.Scene {
     let targetVy = 0;
     if (hasInput) {
       const len = Math.hypot(dirX, dirY) || 1;
-      targetVx = (dirX / len) * speedPxPerSec;
-      targetVy = (dirY / len) * speedPxPerSec;
+      targetVx = (dirX / len) * speedPxPerSec * throttle;
+      targetVy = (dirY / len) * speedPxPerSec * throttle;
     }
 
-    // Snappier accel/decel so movement feels crisp at the zoomed-in scale.
-    const accelBlend = 1 - Math.exp(-26 * dt);
-    const dragBlend = 1 - Math.exp(-40 * dt); // Increased friction for stopping faster
+    // Crisp accel/decel at the zoomed-in scale. Reversing gets the stopping rate, so a
+    // turn-around doesn't coast through a slow patch in the middle.
+    const reversing = hasInput && vel.vx * targetVx + vel.vy * targetVy < 0;
+    const accelBlend = 1 - Math.exp(-(reversing ? 40 : 32) * dt);
+    const dragBlend = 1 - Math.exp(-40 * dt);
     vel.vx = Phaser.Math.Linear(vel.vx, targetVx, hasInput ? accelBlend : dragBlend);
     vel.vy = Phaser.Math.Linear(vel.vy, targetVy, hasInput ? accelBlend : dragBlend);
 
@@ -2390,11 +2416,12 @@ export class GameScene extends Phaser.Scene {
     const speed = Math.hypot(vel.vx, vel.vy);
     const dirX = speed > 1 ? vel.vx / speed : 0;
     const dirY = speed > 1 ? vel.vy / speed : 0;
-    const desiredX = human.x + dirX * CAMERA_MAX_LEAD_X;
-    const desiredY = human.y + dirY * CAMERA_MAX_LEAD_Y;
-    const blend = 1 - Math.exp(-13 * dt);
-    this.camTargetX = Phaser.Math.Linear(this.camTargetX, desiredX, blend);
-    this.camTargetY = Phaser.Math.Linear(this.camTargetY, desiredY, blend);
+    // Only the look-ahead eases; the player's own motion is followed exactly.
+    const blend = 1 - Math.exp(-6 * dt);
+    this.camLeadX = Phaser.Math.Linear(this.camLeadX, dirX * CAMERA_MAX_LEAD_X, blend);
+    this.camLeadY = Phaser.Math.Linear(this.camLeadY, dirY * CAMERA_MAX_LEAD_Y, blend);
+    this.camTargetX = human.x + this.camLeadX;
+    this.camTargetY = human.y + this.camLeadY;
 
     const halfW = cam.width / (2 * cam.zoom);
     const halfH = cam.height / (2 * cam.zoom);
@@ -2545,7 +2572,7 @@ export class GameScene extends Phaser.Scene {
 
     for (const bot of bots) {
       const mind = this.mindOf(bot);
-      const speedMul = bot.speedBoostActive ? 2.5 : 1.0;
+      const speedMul = bot.speedBoostActive ? SPEED_BOOST_MULT : 1.0;
       const slowMul = bot.slowedUntil && bot.slowedUntil > now ? 0.3 : 1.0;
       // Holder is slower (target); hunters are faster (so they can close the gap).
       const baseMult = bot.hasEgg ? BOT_SPEED_HOLDER : BOT_SPEED_HUNTER;
@@ -3252,6 +3279,29 @@ export class GameScene extends Phaser.Scene {
     return 15000;
   }
 
+  /**
+   * Fire the local player's power if a press is waiting. Space and the touch button both
+   * land here. A press is kept for POWER_BUFFER_MS, so tapping just before the power is
+   * ready still fires it the moment it is, instead of being silently dropped.
+   */
+  private tryQueuedPower() {
+    if (touchInput.powerAt) {
+      this.powerRequestAt = touchInput.powerAt;
+      touchInput.powerAt = 0;
+    }
+    if (!this.powerRequestAt) return;
+    if (performance.now() - this.powerRequestAt > POWER_BUFFER_MS) {
+      this.powerRequestAt = 0;
+      return;
+    }
+    if (this.currentPhase !== 'playing' || useGameStore.getState().paused) return;
+    const hp = this.gsPlayers.find((p) => p.id === 'player');
+    if (hp && hp.powerUpReady && !hp.powerUpActive && !hp.powerUpCooldown) {
+      this.powerRequestAt = 0;
+      this.activatePowerUp(hp);
+    }
+  }
+
   private activatePowerUp(player: Player) {
     if (!player.powerUpReady || player.powerUpActive || player.powerUpCooldown) return;
     const pu = player.character.powerUp;
@@ -3292,6 +3342,12 @@ export class GameScene extends Phaser.Scene {
       case 'speed-boost':
         this.attachPowerAura(player.id, 0x38bdf8);
         player.speedBoostActive = true;
+        // Kick the current velocity straight to boosted speed, so the burst is felt on
+        // the frame you press it rather than ramping in over the next few.
+        if (player.id === 'player') {
+          const v = this.playerVelocity['player'];
+          if (v) { v.vx *= SPEED_BOOST_MULT; v.vy *= SPEED_BOOST_MULT; }
+        }
         // Self-terminating cosmetic trail (stops when speedBoostActive clears).
         this.time.addEvent({
           delay: 70,

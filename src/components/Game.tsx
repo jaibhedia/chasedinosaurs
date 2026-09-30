@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useGameStore } from '@/store/gameStore';
 import GameCanvas from '@/components/GameCanvas';
@@ -16,8 +16,6 @@ export interface GameProps {
 
 export function Game({ onGameEnd }: GameProps) {
   const { gamePhase, countdownTimer, players, userId } = useGameStore();
-  const [mobileDirection, setMobileDirection] = useState({ x: 0, y: 0 });
-  const [mobilePowerUpPressed, setMobilePowerUpPressed] = useState(false);
   const endedRef = useRef(false);
 
   const currentPlayer = players.find(
@@ -45,34 +43,6 @@ export function Game({ onGameEnd }: GameProps) {
       document.body.style.touchAction = '';
     };
   }, []);
-
-  useEffect(() => {
-    const keys: { [key: string]: boolean } = {};
-    if (Math.abs(mobileDirection.x) > 0.2 || Math.abs(mobileDirection.y) > 0.2) {
-      if (mobileDirection.y < -0.2) keys['w'] = true;
-      if (mobileDirection.y > 0.2) keys['s'] = true;
-      if (mobileDirection.x < -0.2) keys['a'] = true;
-      if (mobileDirection.x > 0.2) keys['d'] = true;
-    }
-    Object.keys(keys).forEach((key) => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key }));
-    });
-    return () => {
-      Object.keys(keys).forEach((key) => {
-        window.dispatchEvent(new KeyboardEvent('keyup', { key }));
-      });
-    };
-  }, [mobileDirection]);
-
-  useEffect(() => {
-    if (mobilePowerUpPressed) {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
-      setTimeout(() => {
-        window.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
-        setMobilePowerUpPressed(false);
-      }, 100);
-    }
-  }, [mobilePowerUpPressed]);
 
   // On match end, hold the "time's up" beat briefly so the final grab registers, then
   // hand off to the results screen.
@@ -134,8 +104,6 @@ export function Game({ onGameEnd }: GameProps) {
       </AnimatePresence>
 
       <MobileControls
-        onDirectionChange={setMobileDirection}
-        onPowerUpPress={() => setMobilePowerUpPressed(true)}
         powerUpReady={powerUpReady}
         powerUpActive={powerUpActive}
         powerUpCooldown={powerUpCooldown}
