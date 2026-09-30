@@ -27,14 +27,13 @@ export function Game({ onGameEnd }: GameProps) {
   const powerUpCooldownMax = currentPlayer?.powerUpCooldownMax ?? 15000;
 
   useEffect(() => {
-    const isMobile = window.innerWidth <= 1024;
-    if (isMobile) {
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
-      document.body.style.height = '100%';
-      document.body.style.touchAction = 'none';
-    }
+    // Lock the page under the game on every screen size (it used to check the width once,
+    // so a window resized after the match started kept whichever mode it began in).
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.height = '100%';
+    document.body.style.touchAction = 'none';
     return () => {
       document.body.style.overflow = '';
       document.body.style.position = '';
