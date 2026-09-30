@@ -15,13 +15,12 @@ panels and sun-yellow accents pop. Subtle CRT scanlines over everything. Sharp c
 | Danger | `#E8503A` | destructive / defeat |
 | Ink | `#11111C` / `#181826` | outlines, deep background |
 
-shadcn HSL tokens live in [app/globals.css](app/globals.css) `:root` (mirrored for the game in
-[game-app/src/index.css](game-app/src/index.css)). `--radius: 0` — nothing is rounded.
+Tokens live in [src/index.css](src/index.css) `:root`. Nothing is rounded.
 
 ## Typography
 - **Headings / labels:** `Press Start 2P` (`--font-heading`, class `.pixel-font` / `.font-heading`).
-- **Body:** `VT323` (`--font-body`) — a readable pixel font. Loaded via `next/font` in the shell
-  and via Google Fonts `@import` in the game.
+- **Body:** `VT323` (`--font-body`) — a readable pixel font. Both are bundled with
+  `@fontsource` (imported in `src/main.tsx`), so they work offline and in the native apps.
 
 ## Pixel chrome (use these, don't hand-roll)
 - `.pixel-panel` — dark stepped-border panel (chunky ink outline + inner highlight + hard drop
@@ -32,8 +31,8 @@ shadcn HSL tokens live in [app/globals.css](app/globals.css) `:root` (mirrored f
   `neon`=sun, `game`=sky, `destructive`=danger, `outline`/`ghost`/`link`. They press down on
   `:active` and play the click SFX.
 - In the game HUD: `.px-panel`, `.px-chip`, `.px-heading`, `.px-shadow`.
-- Scanlines: a single `<div className="scanlines" />` is mounted in `app/layout.tsx` and
-  `game-app/.../Game.tsx`. Respects `prefers-reduced-motion`.
+- Scanlines: a single `<div className="scanlines" />` is mounted in `src/App.tsx`. Respects
+  `prefers-reduced-motion`.
 
 ## Do / Don't
 - **Do** use solid palette fills, sharp corners, 8px-grid spacing, hard (offset) shadows.
@@ -41,7 +40,7 @@ shadcn HSL tokens live in [app/globals.css](app/globals.css) `:root` (mirrored f
   `border-radius: 0 !important` enforces the last one.
 - Keep `image-rendering: pixelated` on all sprites/tiles.
 
-## In-game maps (Phaser tilemaps, 32px)
-All three maps are real tilemaps built in [game-app/src/scene/gameScene.ts](game-app/src/scene/gameScene.ts):
-office (`Room_Builder_free_32x32`), Summer Plains (`summer_plains_tiles`, grass + water rim),
-Inferno Keep (`all_tiles_free`, stone + brick + lava slow-zones).
+## In-game arena
+One arena for now, Summer Plains: the FreeEnviro grassland built procedurally in
+[src/scene/gameScene.ts](src/scene/gameScene.ts) (`buildGrassland`) from a seeded RNG, so
+every client in a room builds the same layout.

@@ -17,7 +17,7 @@
  * Port: PORT (Render) or SOCKET_PORT, default 3001.
  */
 // MUST be first: loads server/.env into process.env before any module below reads
-// it (computeRouter.ts reads OG_* at import time). No-op on Render, which injects
+// it (ai/provider.ts reads AI_* at import time). No-op on Render, which injects
 // env vars directly. Never commit the real .env.
 import 'dotenv/config';
 import { createServer } from 'node:http';
@@ -25,14 +25,10 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { ethers } from 'ethers';
 import { Server, type Socket } from 'socket.io';
-import { decideIntents, forgetRoom, getTranscript, type AgentSnapshot } from './agents/agentBrain';
-import { getRecords, primeRecords, GRAPH_ENABLED } from './graph/playerRecords';
+import { botLine, matchRoast } from './botVoice';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
-import { settleMatch, getArcMatch, arcEnabled, arcReadEnabled } from './arc/chaseStake';
-import { dripTo, faucetEnabled, faucetStatus, faucetEligibility } from './arc/faucet';
-import { worldEnabled, worldConfig, signProofRequest, verifyProof, WORLD_ACTION } from './world/selfieCheck';
+import { Match } from './match';
 
 const PORT = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 /** How long a disconnected player's slot is held open for them to come back. */
@@ -48,18 +44,6 @@ interface LobbyPlayer {
   /** Live connection bookkeeping for reconnect + voice routing. */
   connected: boolean;
   socket_id: string;
-  /**
-   * The player's Arc wallet, captured at join so settlement can find it later.
-   *
-   * The match-end payload comes from the game scene, which is a separate app with no
-   * wallet of its own — its `winner` is `{ id, name, userId, eggHoldCount }`. Without
-   * this field there is no way to turn the winning userId into a payable address, and
-   * settleMatch rejects a missing one, so every ranked pot would sit unsettled until
-   * the refund window regardless of whether the settlement key was configured.
-   *
-   * Null for Free Play and for anyone who reached the room without a wallet.
-   */
-  wallet_address: string | null;
 }
 
 interface Room {
@@ -73,22 +57,50 @@ interface Room {
   graceTimers: Map<string, ReturnType<typeof setTimeout>>;
   /** user_ids currently in the proximity voice channel. */
   voiceUsers: Set<string>;
+  /** The match in progress: egg ownership, clock, stats. Null in the lobby. */
+  match: Match | null;
+  /** Fires at the buzzer to settle the match. */
+  endTimer: ReturnType<typeof setTimeout> | null;
+  /** Quick Play room: filled by matchmaking and started on a timer, no ready-up. */
+  quick: boolean;
+  /** Who has reported whom (reported userId → reporter userIds). */
+  reports: Map<string, Set<string>>;
+  /** Players dropped from voice after reports. */
+  voiceBlocked: Set<string>;
+  /** Server time a Quick Play room starts, if it's counting down. */
+  startsAt: number | null;
+  autoStart: ReturnType<typeof setTimeout> | null;
+}
+
+/** How long a Quick Play room waits for more players before bots fill the seats. */
+const QUICK_WAIT_MS = 8000;
+/** Don't drop a new player into a room that's about to start without them seeing it. */
+const QUICK_JOIN_CUTOFF_MS = 1500;
+
+function newRoom(mapId: string, isPublic: boolean, host: LobbyPlayer, quick = false): Room {
+  return {
+    mapId,
+    isPublic,
+    players: [host],
+    hostUserId: host.user_id,
+    started: false,
+    serverStartTime: null,
+    graceTimers: new Map(),
+    voiceUsers: new Set(),
+    match: null,
+    endTimer: null,
+    quick,
+    reports: new Map(),
+    voiceBlocked: new Set(),
+    startsAt: null,
+    autoStart: null,
+  };
 }
 
 /** In-memory room store, keyed by 6-char room code. */
 const rooms = new Map<string, Room>();
 
-/** Rooms with an agent-brain inference in flight — prevents overlapping 0G calls
- *  (and duplicate spend) for the same room. */
-const agentTickInFlight = new Set<string>();
 
-/** Replay upload bookkeeping (Phase 2 / 0G Storage). Upload a given room's replay to
- *  0G Storage exactly once, then serve the cached {rootHash,txHash} to any later asker
- *  (each MP client emits store-replay independently when its match ends). */
-/** What a finished match reports back: the settled pot, or nulls for an unstaked room. */
-interface StoredReplay { arcTxHash: string | null; arcPot: string | null; arcExplorer: string | null; }
-const replayResults = new Map<string, StoredReplay>();
-const replayInFlight = new Set<string>();
 
 function genRoomCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -97,15 +109,8 @@ function genRoomCode(): string {
   return code;
 }
 
-/**
- * Public-facing player shape (drops internal bookkeeping fields).
- *
- * `wallet_address` stays out deliberately. This projection is broadcast to everyone in
- * the room, and no client needs another player's payout address to render the lobby —
- * settlement resolves it server-side. Anyone who genuinely wants the staked addresses
- * can read them from the escrow, which is the appropriate place for that to be public.
- */
-function publicPlayers(room: Room): Array<Omit<LobbyPlayer, 'graceTimers' | 'wallet_address'>> {
+/** Public-facing player shape, broadcast to everyone in the room. */
+function publicPlayers(room: Room): Array<LobbyPlayer & { host: boolean }> {
   return room.players.map((p) => ({
     id: p.id,
     player_name: p.player_name,
@@ -114,110 +119,66 @@ function publicPlayers(room: Room): Array<Omit<LobbyPlayer, 'graceTimers' | 'wal
     character_id: p.character_id,
     connected: p.connected,
     socket_id: p.socket_id,
+    host: p.user_id === room.hostUserId,
   }));
 }
 
-/**
- * Attach each human player's on-chain staking record to the agent-brain snapshot.
- *
- * This is the join that makes the AI opponents read The Graph: the host client knows
- * positions and Privy user ids but has no idea who anyone is on-chain, and the escrow
- * knows wallets but nothing about the match in progress. The server holds both halves —
- * `wallet_address` was captured at join for settlement — so it resolves userId → wallet
- * → indexed record here, and the brains get to reason about who is actually dangerous.
- *
- * Strictly best-effort. `getRecords` is a synchronous cache read that never throws, so
- * an unreachable subgraph costs this path nothing and the snapshot goes out unchanged.
- * Solo play (`solo-<userId>`) has no room, and therefore no records — by design, since
- * there is nothing staked in single-player anyway.
- */
-function withOnChainRecords(roomCode: string, players: AgentSnapshot['players']): AgentSnapshot['players'] {
-  const room = rooms.get(roomCode);
-  if (!room || !Array.isArray(players)) return players ?? [];
-
-  // userId → wallet, for the humans in this room that have one.
-  const walletFor = new Map<string, string>();
-  for (const p of room.players) {
-    if (p.wallet_address) walletFor.set(p.user_id, p.wallet_address);
+/** Drop a player from a room: hands the host role on, or closes an empty room. */
+function removePlayer(rc: string, room: Room, uid: string): void {
+  room.players = room.players.filter((p) => p.user_id !== uid);
+  if (room.players.length === 0) {
+    if (room.endTimer) clearTimeout(room.endTimer);
+    if (room.autoStart) clearTimeout(room.autoStart);
+    rooms.delete(rc);
+    return;
   }
-  if (walletFor.size === 0) return players;
-
-  const records = getRecords([...walletFor.values()]);
-  if (records.size === 0) return players;
-
-  return players.map((p) => {
-    if (p.kind !== 'human' || !p.userId) return p;
-    const wallet = walletFor.get(p.userId);
-    const record = wallet ? records.get(wallet.toLowerCase()) : undefined;
-    return record ? { ...p, record } : p;
+  if (room.hostUserId === uid) room.hostUserId = room.players[0].user_id;
+  io.to(rc).emit('player-left', {
+    userId: uid,
+    players: publicPlayers(room),
+    currentPlayers: room.players.length,
   });
 }
 
 /**
- * Who gets paid the pot.
- *
- * "Last egg holder wins" is the game's rule, and the fill-agents play by it — so an agent
- * can absolutely be holding the egg when the timer runs out. The old code resolved the
- * winning userId against the room roster, got `null` for `agent_0`, and left the pot
- * escrowed until the one-hour refund window. A ranked match where the bots won simply ate
- * both players' money for an hour.
- *
- * The rule is NOT "agents cannot be paid". It is "an UNBACKED agent cannot be paid".
- *
- * Today's fill-agents are house NPCs: we spawn them to keep a half-full room playable, and
- * nobody owns them. There is no principal behind `agent_0` — no wallet, no person, nobody
- * accountable for what it does — so there is no one to pay, and the pot goes to the human
- * who did best by the game's own scoring (most egg holds) among players who actually
- * staked. Ties break on user id so the outcome is deterministic and reproducible from the
- * match record.
- *
- * A player-owned agent is a different thing and is meant to be payable: a verified human
- * registers it, stakes through it, and is accountable for it, so winnings settle to that
- * human's wallet. The boundary that matters is not human-vs-agent, it is
- * backed-vs-unbacked — which is exactly what proof-of-human buys us. Selfie Check decides
- * who can be paid *out of* the faucet; this decides who can be paid *out of* the escrow;
- * both ask whether there is an accountable person, and neither accepts a claim as proof.
- *
- * Extending this to bring-your-own-agent means giving an agent a principal to check
- * against, not removing the check.
+ * The buzzer. The server's clock decides when the match is over and who won, so every
+ * screen shows the same result. The room then drops back to the lobby, unready, so the
+ * same group can go again.
  */
-function resolvePayoutAddress(
-  rc: string,
-  payload: any,
-): { address: string | null; reason: string } {
+/** Start the match: the server's clock, egg and buzzer take over from here. */
+function startMatch(rc: string): void {
   const room = rooms.get(rc);
-  if (!room) return { address: null, reason: 'room no longer exists' };
+  if (!room || room.started) return;
+  if (room.autoStart) clearTimeout(room.autoStart);
+  room.autoStart = null;
+  room.startsAt = null;
+  room.started = true;
+  room.serverStartTime = Date.now();
+  room.match = new Match(room.serverStartTime);
+  if (room.endTimer) clearTimeout(room.endTimer);
+  // A little after the buzzer, so the last claims in flight still land.
+  room.endTimer = setTimeout(() => finishMatch(rc), room.match.endAt - Date.now() + 150);
+  io.to(rc).emit('game-started', {
+    serverTime: room.serverStartTime,
+    now: Date.now(),
+    players: publicPlayers(room),
+    mapId: room.mapId,
+  });
+}
 
-  const winnerUserId = payload?.result?.winner?.userId;
-  const direct = room.players.find((p) => p.user_id === winnerUserId)?.wallet_address ?? null;
-  if (direct) return { address: direct, reason: 'winner' };
-
-  // No wallet for the winner: either an agent took the egg, or a human reached the room
-  // without one. Fall back to the best-scoring staked human.
-  const roster: any[] = Array.isArray(payload?.result?.players) ? payload.result.players : [];
-  const humans = roster
-    .filter((p) => p && !p.isBot && p.userId)
-    .map((p) => ({
-      userId: String(p.userId),
-      holds: Number(p.eggHoldCount) || 0,
-      address: room.players.find((rp) => rp.user_id === String(p.userId))?.wallet_address ?? null,
-    }))
-    .filter((p): p is { userId: string; holds: number; address: string } => Boolean(p.address))
-    .sort((a, b) => b.holds - a.holds || a.userId.localeCompare(b.userId));
-
-  if (humans.length === 0) {
-    return { address: null, reason: 'no staked human with a wallet on record' };
-  }
-
-  const winnerWasAgent = roster.some(
-    (p) => p && p.isBot && String(p.userId ?? '') === String(winnerUserId ?? ''),
-  );
-  return {
-    address: humans[0].address,
-    reason: winnerWasAgent
-      ? `an agent held the egg — pot to best human (${humans[0].holds} holds)`
-      : `winner had no wallet — pot to best human (${humans[0].holds} holds)`,
-  };
+function finishMatch(rc: string): void {
+  const room = rooms.get(rc);
+  if (!room?.match || room.match.ended) return;
+  const result = room.match.finish();
+  room.match = null;
+  room.endTimer = null;
+  room.started = false;
+  room.serverStartTime = null;
+  // A Quick Play group that stays together carries on as an ordinary room.
+  room.quick = false;
+  for (const p of room.players) p.is_ready = false;
+  io.to(rc).emit('match-result', result);
+  io.to(rc).emit('room-update', { room: { map_id: room.mapId }, players: publicPlayers(room), readyPlayers: 0 });
 }
 
 /** Find the live socket id for a user in a room (for targeted voice relay). */
@@ -258,17 +219,6 @@ function cleanNum(v: unknown, min: number, max: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.min(max, Math.max(min, n));
 }
-/**
- * Checksum-normalized EVM address, or null.
- *
- * Normalizing on the way in matters because this value is later compared against the
- * escrow's own player list, and `getAddress` is the only thing that makes a lowercase
- * client string and a checksummed on-chain one compare equal.
- */
-function cleanAddress(v: unknown): string | null {
-  if (typeof v !== 'string' || !ethers.isAddress(v)) return null;
-  return ethers.getAddress(v);
-}
 
 /** True only if this socket is a live member of a real `roomCode` — the core guard that
  *  stops a client spoofing/griefing a room it never joined. */
@@ -279,9 +229,9 @@ function isRoomMember(socket: Socket<any, any, any, SocketData>, roomCode: unkno
   return !!room && room.players.some((p) => p.user_id === socket.data.userId);
 }
 
-/** Membership guard that also allows a single-player `solo-<userId>` room (which has no
- *  Socket.IO fan-out, so it can't reach anyone else). Used by relay handlers that both
- *  single-player and multiplayer emit (agent-tick, store-replay, game-finished). */
+/** Membership guard that also allows a single-player `solo-<userId>` id (which has no
+ *  Socket.IO fan-out, so it can't reach anyone else). Used by requests that both
+ *  single-player and multiplayer make (bot lines, roasts). */
 function canUseRoom(socket: Socket<any, any, any, SocketData>, roomCode: unknown): roomCode is string {
   if (typeof roomCode === 'string' && roomCode.startsWith('solo-')) return true;
   return isRoomMember(socket, roomCode);
@@ -317,158 +267,21 @@ app.use(helmet());
 app.use(cors({ origin: corsOrigin, credentials: true }));
 // Basic abuse guard on the HTTP routes (the socket has its own per-action limiter).
 app.use(rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }));
-// Needed by POST /arc/faucet — without it req.body is undefined. Capped small: the only
-// POST body this server takes is a single address.
-app.use(express.json({ limit: '4kb' }));
 app.get('/', (_req, res) => {
   res.type('text/plain').send('chase socket ok');
 });
 /**
- * Liveness + configuration report.
- *
- * Two jobs, both cheap on purpose:
- *
- *  1. **Keepalive.** Render's free plan spins a service down after ~15 minutes idle and
- *     cold-starts in ~50s, which to anyone clicking a link is indistinguishable from a dead
- *     site. A cron hitting this every 10 minutes keeps it warm. So this handler does no
- *     network calls, no RPC, and nothing async — every value is an in-memory read, and it
- *     stays safe to hammer.
- *
- *  2. **Deploy verification.** Every integration here degrades to a no-op rather than
- *     crashing when its key is missing, which is the right behaviour and also means a
- *     half-configured server boots perfectly and silently does half its job. `configured`
- *     is the one-glance answer to "did all the env vars actually land", without shelling
- *     into the host to read boot logs.
- *
- * Deliberately excludes the faucet's *balance* — that needs an RPC round trip, and putting
- * it here would turn a keepalive ping into an on-chain call every 10 minutes forever.
+ * Liveness report, and the keepalive target. Render's free plan spins a service down
+ * after ~15 minutes idle, so a cron can hit this every 10 minutes. Everything here is an
+ * in-memory read, so it stays safe to hammer.
  */
 app.get('/health', (_req, res) => {
-  const configured = {
-    ai: aiEnabled,
-    arc: arcEnabled,
-    faucet: faucetEnabled,
-    graph: GRAPH_ENABLED,
-    world: worldEnabled,
-  };
   res.json({
     ok: true,
     rooms: rooms.size,
     uptime: process.uptime(),
-    // True only when every integration is armed — the single field to check after a deploy.
-    fullyConfigured: Object.values(configured).every(Boolean),
-    configured,
     ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null },
-    arc: { enabled: arcEnabled, readEnabled: arcReadEnabled },
-    world: { enabled: worldEnabled, environment: worldConfig().environment },
   });
-});
-
-// Arc — live escrow state for a room, so the lobby can show the pot building up and the
-// results screen can link the payout. Returns { staked: false } for Free Play rooms,
-// which have no on-chain match at all.
-/**
- * Fund a new player's embedded wallet so they can actually enter a ranked match.
- *
- * Tighter rate limit than the global one: this endpoint spends money. The per-address
- * single-claim rule lives in the faucet module; this only bounds how hard one IP can
- * hammer it while probing for addresses that haven't claimed yet.
- */
-const faucetLimiter = rateLimit({
-  windowMs: 60_000,
-  max: 6,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.post('/arc/faucet', faucetLimiter, async (req, res) => {
-  if (!faucetEnabled) {
-    res.status(503).json({ ok: false, reason: 'Faucet is not configured on this server.' });
-    return;
-  }
-  const body = (req.body ?? {}) as { address?: unknown; userId?: unknown; proof?: unknown };
-
-  /**
-   * With the World gate on, the proof is verified here rather than trusted from the
-   * client. A nullifier posted by the browser is just a string — anyone could replay
-   * someone else's, or invent one — so the only value that counts is the one we pulled
-   * out of a payload World's Developer Portal just confirmed.
-   */
-  let nullifier: string | null = null;
-  if (worldEnabled) {
-    if (!body.proof) {
-      // Only ask for a selfie from someone the faucet would actually pay. Anyone already
-      // funded, already claimed, or holding enough gets the plain refusal instead, and is
-      // never shown the gate.
-      const elig = await faucetEligibility(
-        String(body.address ?? ''),
-        typeof body.userId === 'string' ? body.userId : null,
-      );
-      if (!elig.eligible) {
-        res.status(400).json({ ok: false, reason: elig.reason ?? 'Not eligible.' });
-        return;
-      }
-      res.status(400).json({ ok: false, reason: 'Verify you are a real person to claim your USDC.', needsWorldId: true });
-      return;
-    }
-    const verified = await verifyProof(body.proof);
-    if (!verified.ok) {
-      res.status(400).json({ ok: false, reason: verified.reason, needsWorldId: true });
-      return;
-    }
-    nullifier = verified.nullifier;
-  }
-
-  const result = await dripTo(
-    String(body.address ?? ''),
-    typeof body.userId === 'string' ? body.userId : null,
-    nullifier,
-  );
-  // 400 rather than 500 on refusal: every reason the faucet says no (already claimed,
-  // already funded, empty) is a fact about the request, not a server failure.
-  res.status(result.ok ? 200 : 400).json(result);
-});
-
-/**
- * Public World ID config, so the browser can open the IDKit widget without any of it
- * being baked into the Next bundle at build time. `enabled: false` is the signal for the
- * client to skip the gate entirely.
- */
-app.get('/world/config', (_req, res) => {
-  res.json(worldConfig());
-});
-
-/**
- * Sign a proof request.
- *
- * Rate-limited with the faucet's own limiter because that is what it guards — a signature
- * is only useful for claiming, so the two should run out together. The signing key never
- * leaves this process.
- */
-app.post('/world/rp-signature', faucetLimiter, (_req, res) => {
-  const sig = signProofRequest();
-  if (!sig) {
-    res.status(503).json({ ok: false, reason: 'World ID is not configured on this server.' });
-    return;
-  }
-  res.json(sig);
-});
-
-app.get('/arc/match/:roomCode', async (req, res) => {
-  const roomCode = String(req.params.roomCode || '').slice(0, 32);
-  if (!arcReadEnabled) { res.json({ enabled: false, staked: false, match: null }); return; }
-  try {
-    const match = await getArcMatch(roomCode);
-    res.json({ enabled: true, staked: !!match, match });
-  } catch (err) {
-    res.json({ enabled: true, staked: false, match: null, error: (err as Error).message });
-  }
-});
-
-// GET /leaderboard is gone along with the 0G leaderboard contract it read. Kept as a
-// stub rather than a 404 so an older client bundle cached in someone's browser renders
-// an empty board instead of erroring.
-app.get('/leaderboard', (_req, res) => {
-  res.json({ enabled: false, rows: [] });
 });
 
 const httpServer = createServer(app);
@@ -484,21 +297,6 @@ const io = new Server(httpServer, {
 interface SocketData {
   userId: string | null;
   roomCode: string | null;
-}
-
-/**
- * Second chance to fund a player, on the way into a room.
- *
- * The client already fires a drip the moment Privy hands it an address, so this is
- * usually a no-op that the faucet refuses as already-claimed. It exists because that
- * client call is the kind of thing that quietly fails -- an ad blocker, a cold server, a
- * refresh at the wrong moment -- and the failure would only surface as a player who
- * cannot afford the match they just joined. Fire-and-forget: nobody waits on a faucet to
- * enter a lobby.
- */
-function fundInBackground(address: string | null, userId?: string | null): void {
-  if (!address || !faucetEnabled) return;
-  dripTo(address, userId).catch(() => { /* every real refusal is already logged by the faucet */ });
 }
 
 io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
@@ -527,19 +325,8 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       character_id: cleanNum(data.characterId, 1, 4) || 1,
       connected: true,
       socket_id: socket.id,
-      wallet_address: cleanAddress((data as { walletAddress?: unknown })?.walletAddress),
     };
-    fundInBackground(player.wallet_address, player.user_id);
-    rooms.set(roomCode, {
-      mapId: data.mapId || 'map-1',
-      isPublic: data.isPublic !== false,
-      players: [player],
-      hostUserId: data.userId,
-      started: false,
-      serverStartTime: null,
-      graceTimers: new Map(),
-      voiceUsers: new Set(),
-    });
+    rooms.set(roomCode, newRoom(cleanStr(data.mapId, 16) || 'map-1', data.isPublic !== false, player));
     socket.data.userId = data.userId;
     socket.data.roomCode = roomCode;
     socket.join(roomCode);
@@ -586,10 +373,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
         character_id: resolveCharacter(room, data.characterId),
         connected: true,
         socket_id: socket.id,
-        wallet_address: cleanAddress((data as { walletAddress?: unknown })?.walletAddress),
       });
-      const joined = room.players[room.players.length - 1];
-      fundInBackground(joined.wallet_address, joined.user_id);
     }
     socket.data.userId = data.userId;
     socket.data.roomCode = data.roomCode;
@@ -602,7 +386,77 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       roomCode: data.roomCode,
       players: publicPlayers(room),
       room: { map_id: room.mapId },
+      quick: room.quick,
+      startsAt: room.startsAt,
+      now: Date.now(),
     });
+  });
+
+  /**
+   * Quick Play: drop the player into a Quick Play room that's still filling, or open a
+   * new one. Quick rooms start themselves QUICK_WAIT_MS after they open (sooner when
+   * full), and the empty seats are played by bots.
+   */
+  socket.on('quick-play', (data: any) => {
+    if (!rateOk(`${socket.id}:join`, 30, 60_000)) {
+      socket.emit('error', { message: 'Slow down — too many join attempts.' });
+      return;
+    }
+    if (typeof data?.userId !== 'string' || !data.userId) {
+      socket.emit('error', { message: 'Invalid session.' });
+      return;
+    }
+    const now = Date.now();
+    let rc: string | null = null;
+    for (const [code, r] of rooms) {
+      if (r.quick && !r.started && r.players.length < 4 && (r.startsAt ?? 0) - now > QUICK_JOIN_CUTOFF_MS) { rc = code; break; }
+    }
+    const player: LobbyPlayer = {
+      id: `p-${socket.id.slice(0, 8)}`,
+      player_name: cleanStr(data.playerName, 24) || 'Player',
+      user_id: data.userId,
+      is_ready: true, // nothing to ready up for; the timer starts it
+      character_id: cleanNum(data.characterId, 1, 4) || 1,
+      connected: true,
+      socket_id: socket.id,
+    };
+    let room: Room;
+    if (rc) {
+      room = rooms.get(rc)!;
+      player.character_id = resolveCharacter(room, player.character_id);
+      room.players.push(player);
+    } else {
+      if (rooms.size >= MAX_ROOMS) {
+        socket.emit('error', { message: 'Server is at capacity, try again shortly.' });
+        return;
+      }
+      rc = genRoomCode();
+      room = newRoom('map-1', false, player, true);
+      room.startsAt = now + QUICK_WAIT_MS;
+      const code = rc;
+      room.autoStart = setTimeout(() => startMatch(code), QUICK_WAIT_MS);
+      rooms.set(rc, room);
+    }
+    socket.data.userId = data.userId;
+    socket.data.roomCode = rc;
+    socket.join(rc);
+    io.to(rc).emit('player-joined', { players: publicPlayers(room), currentPlayers: room.players.length });
+    socket.emit('room-joined', {
+      roomCode: rc,
+      players: publicPlayers(room),
+      room: { map_id: room.mapId },
+      quick: true,
+      startsAt: room.startsAt,
+      now: Date.now(),
+    });
+    // A full room doesn't need to wait; a short beat lets the last arrival see it.
+    if (room.players.length >= 4) {
+      const code = rc;
+      if (room.autoStart) clearTimeout(room.autoStart);
+      room.startsAt = Date.now() + 1500;
+      io.to(rc).emit('room-update', { room: { map_id: room.mapId }, players: publicPlayers(room), startsAt: room.startsAt });
+      room.autoStart = setTimeout(() => startMatch(code), 1500);
+    }
   });
 
   /**
@@ -634,6 +488,11 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       room: { map_id: room.mapId },
       started: room.started,
       serverStartTime: room.serverStartTime,
+      quick: room.quick,
+      startsAt: room.startsAt,
+      // A returning client resyncs the egg rather than trusting what it last saw.
+      egg: room.match?.owner() ?? null,
+      now: Date.now(),
     });
     socket.to(data.roomCode).emit('player-reconnected', {
       userId: data.userId,
@@ -695,63 +554,17 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     io.to(rc).emit('player-joined', { players: publicPlayers(room), currentPlayers: room.players.length });
   });
 
-  socket.on('start-game', async () => {
+  socket.on('start-game', () => {
     const rc = socket.data.roomCode;
     if (!rc) return;
     const room = rooms.get(rc);
-    if (!room) return;
-
-    // TODO: Enable this after mechanics testing is complete
-    // if (room.players.length < 2) {
-    //   socket.emit('error', { message: 'Need at least 2 players to start.' });
-    //   return;
-    // }
-
-    /**
-     * Refuse to start a staked match that someone hasn't paid into.
-     *
-     * settle() is `onlyServer` and reverts with WinnerNotInMatch for an address that
-     * never joined the escrow, so an unstaked player winning doesn't steal anything --
-     * it does something quieter and worse. The payout reverts, the pot stays locked for
-     * the full REFUND_DELAY, and the player who *did* stake just watches their USDC sit
-     * there. Nothing in the UI would explain why.
-     *
-     * Only rooms with a real on-chain match are checked, so Free Play and unconfigured
-     * setups start exactly as before.
-     */
-    if (arcReadEnabled) {
-      try {
-        const match = await getArcMatch(rc);
-        if (match) {
-          const staked = new Set(match.players.map((p) => p.toLowerCase()));
-          const missing = room.players.filter(
-            (p) => !p.wallet_address || !staked.has(p.wallet_address.toLowerCase()),
-          );
-          if (missing.length > 0) {
-            socket.emit('error', {
-              message:
-                missing.length === room.players.length
-                  ? 'Everyone needs to stake before the match can start.'
-                  : `Waiting on ${missing.map((p) => p.player_name).join(', ')} to stake.`,
-            });
-            return;
-          }
-        }
-      } catch (err) {
-        // A flaky RPC read shouldn't strand a lobby that may not even be staked. Start
-        // the match and let settlement report the truth at the end.
-        console.warn(`[arc] stake check failed for room=${rc}: ${(err as Error).message}`);
-      }
+    if (!room || room.started) return;
+    if (room.hostUserId !== socket.data.userId) {
+      socket.emit('error', { message: 'Only the host can start the match.' });
+      return;
     }
 
-    room.started = true;
-    room.serverStartTime = Date.now();
-    io.to(rc).emit('game-starting', { countdown: 3 });
-    io.to(rc).emit('game-started', {
-      serverTime: room.serverStartTime,
-      players: publicPlayers(room),
-      mapId: room.mapId,
-    });
+    startMatch(rc);
   });
 
   socket.on('get-public-rooms', () => {
@@ -777,160 +590,118 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     });
   });
 
-  socket.on('game-state-update', (payload: any) => {
-    if (!isRoomMember(socket, payload?.roomCode)) return;
-    socket.to(payload.roomCode).emit('game-state-update', payload);
-  });
-
   socket.on('player-input', (payload: any) => {
     // Membership-gated + re-built from sanitized fields so a peer can't inject junk.
+    // The sender is whoever this socket joined as, never what the payload claims.
     if (!isRoomMember(socket, payload?.roomCode)) return;
+    const uid = socket.data.userId as string;
+    const x = cleanNum(payload.x, -1e5, 1e5);
+    const y = cleanNum(payload.y, -1e5, 1e5);
+    const isInvincible = !!payload.isInvincible;
+    rooms.get(payload.roomCode)?.match?.report(uid, x, y, isInvincible);
     socket.to(payload.roomCode).emit('player-input', {
       roomCode: payload.roomCode,
-      userId: cleanStr(payload.userId, 64),
-      x: cleanNum(payload.x, -1e5, 1e5),
-      y: cleanNum(payload.y, -1e5, 1e5),
+      userId: uid,
+      x,
+      y,
       vx: cleanNum(payload.vx, -1e5, 1e5),
       vy: cleanNum(payload.vy, -1e5, 1e5),
-      hasEgg: !!payload.hasEgg,
-      isInvincible: !!payload.isInvincible,
+      isInvincible,
     });
   });
 
   // Fill-agent positions, broadcast by the room's agent-authority client so the other
-  // clients can render the 0G agents that are filling empty seats. Pure relay, like
+  // clients can render the AI agents that are filling empty seats. Pure relay, like
   // player-input — the authority is the single source of truth for bot movement.
   socket.on('agent-state', (payload: any) => {
     if (!isRoomMember(socket, payload?.roomCode)) return;
+    const match = rooms.get(payload.roomCode)?.match;
+    if (match && Array.isArray(payload.agents)) {
+      for (const a of payload.agents.slice(0, 4)) {
+        const uid = cleanStr(a?.uid, 32);
+        if (uid.startsWith('agent_')) match.report(uid, cleanNum(a.x, -1e5, 1e5), cleanNum(a.y, -1e5, 1e5), !!a.isInvincible);
+      }
+    }
     socket.to(payload.roomCode).emit('agent-state', payload);
   });
 
   /**
-   * Agent-brain tick (the AI-native core). One client per room — the host, or the
-   * solo single-player client — sends a compact world snapshot every few seconds.
-   * We run ONE 0G Compute inference and broadcast the resulting intents to the whole
-   * room so every client drives the agents identically. `agentTickInFlight` guards
-   * against overlapping inference for the same room (and the duplicate spend that
-   * would cause). `source` tells clients whether 0G is actually live → the on/off pill.
+   * "I (or a bot I steer) just reached the egg / touched its holder." The server checks
+   * the claim against the positions it has seen and, if it holds, tells the whole room
+   * the new owner with a sequence number. A rejected claimer gets the current owner
+   * back, so a client that guessed wrong corrects itself.
    */
-  socket.on('agent-tick', async (snap: AgentSnapshot) => {
-    const rc = snap?.roomCode || socket.data.roomCode;
-    if (!canUseRoom(socket, rc)) return;
-    if (agentTickInFlight.has(rc)) return;
-    agentTickInFlight.add(rc);
-    try {
-      const enriched = { ...snap, roomCode: rc, players: withOnChainRecords(rc, snap.players) };
-      const { intents, source } = await decideIntents(enriched);
-      const payload = { intents, source, ogEnabled: aiEnabled, aiProvider: aiProviderName };
-      // Reach the requesting client (single-player has no Socket.IO room) AND the
-      // rest of the room (multiplayer), with no duplicate to the sender.
-      socket.emit('agent-intents', payload);
-      socket.to(rc).emit('agent-intents', payload);
-    } catch (err) {
-      console.warn('[0G] agent-tick error:', (err as Error).message);
-      socket.emit('agent-intents', { intents: [], source: 'fallback', ogEnabled: aiEnabled, aiProvider: aiProviderName });
-    } finally {
-      agentTickInFlight.delete(rc);
-    }
+  socket.on('egg-claim', (payload: any) => {
+    const rc = payload?.roomCode;
+    if (!isRoomMember(socket, rc)) return;
+    if (!rateOk(`${socket.id}:claim`, 40, 1000)) return;
+    const match = rooms.get(rc)?.match;
+    if (!match) return;
+    const claimer = cleanStr(payload.claimerId, 64);
+    // You can claim for yourself, or for a fill-bot (whoever is steering them).
+    if (claimer !== socket.data.userId && !claimer.startsWith('agent_')) return;
+    const eggX = payload.eggX == null ? null : cleanNum(payload.eggX, -1e5, 1e5);
+    const eggY = payload.eggY == null ? null : cleanNum(payload.eggY, -1e5, 1e5);
+    const accepted = match.claim(claimer, eggX, eggY);
+    if (accepted) io.to(rc).emit('egg-owner', accepted);
+    else socket.emit('egg-owner', match.owner());
+  });
+
+  /** A player (or a bot someone steers) used a power: relay it so everyone sees and feels it. */
+  socket.on('power-used', (payload: any) => {
+    const rc = payload?.roomCode;
+    if (!isRoomMember(socket, rc)) return;
+    if (!rateOk(`${socket.id}:power`, 12, 1000)) return;
+    const userId = cleanStr(payload.userId, 64);
+    if (userId !== socket.data.userId && !userId.startsWith('agent_')) return;
+    const type = cleanStr(payload.type, 16);
+    if (!['speed-boost', 'earthquake', 'shield', 'teleport'].includes(type)) return;
+    socket.to(rc).emit('power-used', { userId, type, x: cleanNum(payload.x, -1e5, 1e5), y: cleanNum(payload.y, -1e5, 1e5) });
+  });
+
+  /** Clock sync: clients estimate their offset from the server's clock. */
+  socket.on('time-sync', (_t0: unknown, ack?: (now: number) => void) => {
+    if (typeof ack === 'function') ack(Date.now());
+  });
+
+  /**
+   * A bot has something to say (it just stole the egg, lost it, is closing in, the round
+   * is ending). Answers with one LLM line, or null, in which case the client uses its
+   * own canned line. Solo asks for itself; online, the bot-steering client asks and then
+   * shares the chosen line with bot-said.
+   */
+  socket.on('bot-line', async (payload: any, ack?: (res: { line: string | null }) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!canUseRoom(socket, payload?.roomCode) || !rateOk(`${socket.id}:voice`, 6, 10_000)) { ack({ line: null }); return; }
+    ack({ line: await botLine(payload ?? {}) });
+  });
+
+  /** Share a bot's line with the rest of the room, so everyone sees the same banter. */
+  socket.on('bot-said', (payload: any) => {
+    const rc = payload?.roomCode;
+    if (!isRoomMember(socket, rc) || !rateOk(`${socket.id}:said`, 10, 10_000)) return;
+    const uid = cleanStr(payload.uid, 32);
+    const line = cleanStr(payload.line, 80);
+    if (!uid.startsWith('agent_') || !line) return;
+    socket.to(rc).emit('bot-said', { uid, line });
+  });
+
+  /** One line summing up the finished match for the results screen, or null. */
+  socket.on('match-roast', async (payload: any, ack?: (res: { line: string | null }) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!rateOk(`${socket.id}:roast`, 3, 30_000)) { ack({ line: null }); return; }
+    ack({ line: await matchRoast(payload?.stats ?? [], payload?.winner) });
   });
 
   // Lightweight RTT probe for the optional in-game net-stats overlay. Echoes the
   // client's timestamp straight back so the client can measure round-trip latency.
   socket.on('ping-check', (t: number) => socket.emit('pong-check', t));
 
-  // Authoritative egg ownership: whichever client made the new holder broadcasts the
-  // egg state; everyone else mirrors it (destroys/respawns the ground egg + tints).
-  socket.on('egg-state', (payload: any) => {
-    if (!isRoomMember(socket, payload?.roomCode)) return;
-    socket.to(payload.roomCode).emit('egg-state', payload);
-  });
-
-  socket.on('game-finished', (payload: any) => {
-    if (!canUseRoom(socket, payload?.roomCode)) return;
-    io.to(payload.roomCode).emit('game-finished', payload);
-  });
-
-  /**
-   * Phase 2 — 0G Storage. At match end the client sends its result; we bundle it with
-   * the match's REAL 0G Compute decision transcript and upload it to 0G Storage, then
-   * reply with the verifiable Merkle root hash (shown on the results screen). Uploaded
-   * once per room and cached, so every MP client (and a single-player solo room) gets
-   * the same artifact. `roomCode` matches the agent-tick key (incl. `solo-<userId>`).
-   */
-  socket.on('store-replay', async (payload: { roomCode?: string; result?: any }) => {
-    const rc = payload?.roomCode || socket.data.roomCode;
-    if (!canUseRoom(socket, rc)) return;
-
-    const reply = (r: StoredReplay) => {
-      socket.emit('replay-stored', r);
-      socket.to(rc).emit('replay-stored', r);
-    };
-
-    // Already uploaded for this room → serve the cached artifact.
-    const cached = replayResults.get(rc);
-    if (cached) { reply(cached); return; }
-    if (replayInFlight.has(rc)) return; // upload underway; the broadcast will reach us
-    replayInFlight.add(rc);
-
-    try {
-      // 0G Storage replays and the 0G leaderboard used to run here. Both are gone: they
-      // produced a second, weaker on-chain story competing with the staking one, and a
-      // results screen that explained a Merkle root to someone who just wanted to know
-      // whether they won money. 0G now does one job — the agent brains — which is the
-      // part players actually feel.
-      //
-      // This handler stays because it is also where settlement happens: the game scene
-      // emits `store-replay` at match end, and that is the signal the pot can be paid.
-
-      // Arc — pay out the USDC pot for ranked matches. Safe to call unconditionally:
-      // a Free Play room has no on-chain match, so this no-ops. The replay root links
-      // the payout to the recorded match and its AI decision transcript.
-      //
-      // The address is resolved here rather than taken from the payload. The payload is
-      // built by the game scene, a separate app with no wallet, so `winner.address` is
-      // always undefined -- settleMatch would reject it and every pot would sit
-      // unsettled until refund. What the scene does carry is `winner.userId`, which maps
-      // to the wallet captured when that player joined the room.
-      const winnerUserId = payload?.result?.winner?.userId;
-      const { address: winnerAddress, reason: payoutReason } = resolvePayoutAddress(rc, payload);
-      // Single-player rooms are keyed `solo-<userId>` and never exist in `rooms`, because
-      // nothing was staked and there is nothing to settle. Warning about an unpayable
-      // winner there is noise that reads like a real settlement failure in the logs.
-      const isSolo = rc.startsWith('solo-');
-      if (arcEnabled && !winnerAddress && !isSolo) {
-        console.warn(
-          `[arc] nobody payable for winner userId=${winnerUserId ?? 'unknown'} in room=${rc} ` +
-          `(${payoutReason}) — pot stays escrowed until the refund window.`,
-        );
-      } else if (arcEnabled && payoutReason !== 'winner') {
-        // Worth a line: the wallet being paid is not the player the results screen will
-        // name as the winner, and that discrepancy should be explainable from the logs.
-        console.log(`[arc] room=${rc} payout redirected — ${payoutReason}`);
-      }
-      // Empty replay root: the settle() signature still takes one, and an empty string is
-      // the contract's own "no linked replay" value.
-      const settled = await settleMatch(rc, winnerAddress, '');
-
-      const result: StoredReplay = {
-        arcTxHash: settled?.txHash ?? null,
-        arcPot: settled?.pot ?? null,
-        arcExplorer: settled?.explorer ?? null,
-      };
-      // Cache once the pot is settled so a second match-end emit doesn't re-submit.
-      if (settled) replayResults.set(rc, result);
-      reply(result);
-    } catch (err) {
-      console.warn('[arc] settle-on-match-end error:', (err as Error).message);
-      socket.emit('replay-stored', { arcTxHash: null, arcPot: null, arcExplorer: null });
-    } finally {
-      replayInFlight.delete(rc);
-    }
-  });
 
   // --- Proximity voice chat: WebRTC signalling relay (room-scoped) ---
   socket.on('voice-join', ({ roomCode, userId }: { roomCode: string; userId: string }) => {
     const room = rooms.get(roomCode);
-    if (!room) return;
+    if (!room || room.voiceBlocked.has(userId)) return;
     socket.join(`voice:${roomCode}`);
     // Tell the newcomer who's already in the voice channel so it can call them.
     const peers = [...room.voiceUsers].filter((u) => u !== userId);
@@ -944,6 +715,31 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     socket.leave(`voice:${roomCode}`);
     rooms.get(roomCode)?.voiceUsers.delete(userId);
     socket.to(`voice:${roomCode}`).emit('voice-peer-left', { userId });
+  });
+
+  /**
+   * Report a player (today: for voice chat). Logged for moderation; when two different
+   * players in the room have reported the same person, that person is dropped from the
+   * room's voice channel for the rest of the room's life.
+   */
+  socket.on('report-player', (payload: { roomCode?: string; userId?: string; reason?: string }) => {
+    const rc = payload?.roomCode;
+    if (!isRoomMember(socket, rc) || !rateOk(`${socket.id}:report`, 5, 60_000)) return;
+    const room = rooms.get(rc)!;
+    const target = cleanStr(payload.userId, 64);
+    const reporter = socket.data.userId as string;
+    if (!target || target === reporter || !room.players.some((p) => p.user_id === target)) return;
+    const by = room.reports.get(target) ?? new Set<string>();
+    by.add(reporter);
+    room.reports.set(target, by);
+    console.warn(`[report] room=${rc} reported=${target} by=${reporter} reason=${cleanStr(payload.reason, 16) || 'unspecified'} count=${by.size}`);
+    if (by.size >= 2 && !room.voiceBlocked.has(target)) {
+      room.voiceBlocked.add(target);
+      room.voiceUsers.delete(target);
+      io.to(`voice:${rc}`).emit('voice-peer-left', { userId: target });
+      const sid = socketIdFor(room, target);
+      if (sid) io.to(sid).emit('voice-blocked');
+    }
   });
 
   // Relay an SDP/ICE message to a specific peer in the room.
@@ -973,18 +769,8 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     if (!room) return;
     const t = room.graceTimers.get(uid);
     if (t) { clearTimeout(t); room.graceTimers.delete(uid); }
-    room.players = room.players.filter((p) => p.user_id !== uid);
-    if (room.players.length === 0) {
-      rooms.delete(rc);
-      forgetRoom(rc);
-      replayResults.delete(rc);
-    } else {
-      io.to(rc).emit('player-left', {
-        userId: uid,
-        players: publicPlayers(room),
-        currentPlayers: room.players.length,
-      });
-    }
+    room.voiceUsers.delete(uid);
+    removePlayer(rc, room, uid);
   });
 
   socket.on('disconnect', () => {
@@ -1014,16 +800,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
         room.graceTimers.delete(uid);
         const stillGone = room.players.find((p) => p.user_id === uid);
         if (!stillGone || stillGone.connected) return;
-        room.players = room.players.filter((p) => p.user_id !== uid);
-        if (room.players.length === 0) {
-          rooms.delete(rc);
-        } else {
-          io.to(rc).emit('player-left', {
-            userId: uid,
-            players: publicPlayers(room),
-            currentPlayers: room.players.length,
-          });
-        }
+        removePlayer(rc, room, uid);
       }, RECONNECT_GRACE_MS),
     );
   });
@@ -1041,51 +818,29 @@ httpServer.on('error', (err: NodeJS.ErrnoException) => {
 
 httpServer.listen(PORT, () => {
   console.log(`[chase-server] Express + Socket.IO listening on http://localhost:${PORT}`);
-  void ogSmokeTest();
-  // Warm the subgraph cache now so the first match of a session already has records to
-  // reason over, rather than playing its opening ticks on a cold cache.
-  if (GRAPH_ENABLED) {
-    console.log('[graph] subgraph configured — agents will factor in on-chain records');
-    primeRecords();
-  }
-  // Say up front how many players the faucet can still fund. Running dry mid-demo looks
-  // like the sign-in is broken, since a player with no USDC simply cannot enter a match.
-  void faucetStatus().then((s) => {
-    if (!s) {
-      console.warn('[faucet] disabled (set FAUCET_PRIVATE_KEY). New players will arrive with an empty wallet.');
-      return;
-    }
-    console.log(`[faucet] ${s.address} holds ${Number(s.usdc).toFixed(2)} USDC — roughly ${Math.max(0, Math.floor((Number(s.usdc) - 1) / 2))} more players`);
-  });
-  // Say plainly whether the faucet is sybil-gated, because the failure mode is silent:
-  // an ungated faucet works perfectly right up until someone drains it with ten emails.
-  if (worldEnabled) {
-    console.log(`[world] Selfie Check armed — faucet requires proof of human (action "${WORLD_ACTION}")`);
-  } else {
-    console.warn('[world] disabled (set WORLD_APP_ID / WORLD_RP_ID / WORLD_SIGNING_KEY). Faucet is keyed on email + address only.');
-  }
+  void aiSmokeTest();
 });
 
 /**
- * Non-fatal boot check: prove the 0G Compute Router is reachable and time one
- * round-trip. Logs model + latency (verification step #1). Never throws — a failed
- * smoke test just means agents start on scripted fallback until 0G recovers.
+ * Non-fatal boot check: prove the LLM provider is reachable and time one round-trip.
+ * Never throws — a failed smoke test just means agents start on local tactics until
+ * the provider recovers.
  */
-async function ogSmokeTest(): Promise<void> {
-  const og = getAiClient();
-  if (!og) {
-    console.warn('[0G] smoke test skipped — Compute Router not configured.');
+async function aiSmokeTest(): Promise<void> {
+  const llm = getAiClient();
+  if (!llm) {
+    console.warn('[ai] smoke test skipped — no provider configured.');
     return;
   }
   const started = Date.now();
   try {
-    const r = await og.chat.completions.create(
+    const r = await llm.chat.completions.create(
       { model: AI_MODEL, messages: [{ role: 'user', content: 'Reply with the single word: ok' }], max_tokens: 16 },
       { timeout: 8000, maxRetries: 0 },
     );
     const reply = r.choices?.[0]?.message?.content?.trim() ?? '';
     console.log(`[ai] ${aiProviderName} reachable ✓ model=${AI_MODEL} latency=${Date.now() - started}ms reply="${reply}"`);
   } catch (err) {
-    console.warn(`[0G] Compute smoke test FAILED (${Date.now() - started}ms):`, (err as Error).message);
+    console.warn(`[ai] smoke test FAILED (${Date.now() - started}ms):`, (err as Error).message);
   }
 }

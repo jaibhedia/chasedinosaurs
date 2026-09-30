@@ -1,348 +1,141 @@
-# Chase Dinosaurs — 60 seconds, one egg, real USDC
+# Chase Dinosaurs
 
-A fast multiplayer chase game. One golden egg; whoever holds it is the target, everyone else
-hunts them. Ranked matches escrow **real USDC on Arc** and the winner takes the pot — and the
-**AI opponents read the chain to decide who to hunt.**
+A fast 60-second chase game. There is one golden egg. Whoever holds it is the target and
+everyone else hunts them. Whoever is holding it when the timer hits zero wins.
 
-> **ETHOnline 2026 — Continuity track.** Submitted to **Arc**, **The Graph**, **Privy** and
-> **World**. Architecture: [`submission/ARCHITECTURE.md`](submission/ARCHITECTURE.md).
+- **Solo** against three bots on Easy, Normal or Hard. Works offline.
+- **Multiplayer** with up to four players over room codes or public rooms. Bots fill the
+  empty seats. Proximity voice chat.
+- Four dinos, each with a power that unlocks 15 seconds in: Super Speed, Earthquake,
+  Invincibility Shield, Teleport.
 
-## What existed before this hackathon
+Play: **https://chasedinosaurs.fun** · Roadmap: [`ROADMAP.md`](ROADMAP.md)
 
-Chase was built for **The Zero Cup** (0G's vibe-coding tournament) as a single-player and
-casual-multiplayer chase game with AI opponents. Carried into this event:
+A product of **[Abstract Studio](https://abstractstudio.in)**. Proprietary, see [License](#license).
 
-- The Phaser game engine, three maps, four characters, power-ups, proximity voice chat
-- Socket.IO rooms, lobby, reconnect handling
-- **0G Compute** agent brains — LLM inference setting each agent's strategy, persona and taunts
+---
 
-Original product spec: [`SPEC.md`](SPEC.md). *(0G Storage replays and the 0G Chain leaderboard
-also existed and were **removed** during this event — they produced a second, weaker on-chain
-story competing with the staking one. 0G now does one job: the agent brains.)*
+## Layout
 
-## What was built during ETHOnline 2026
+```
+.
+├── src/            web app: React + TypeScript + Phaser 3 (Vite)
+│   ├── screens/    home, mode select, solo setup, lobby, play, results, support, legal
+│   ├── scene/      the Phaser game (gameScene.ts) and its bootstrap
+│   ├── components/ in-game HUD, touch controls, pause menu, voice chat
+│   ├── providers/  the app-wide Socket.IO connection
+│   └── store/      Zustand game state
+├── public/         sprites, tiles, audio, icons
+├── server/         multiplayer server: Express + Socket.IO (tsx)
+├── docs/ethonline/ the ETHOnline 2026 hackathon plan and submission, kept for history
+└── render.yaml     server deploy blueprint (Render)
+```
 
-Everything that makes it a staked game, and everything that makes the AI read the chain:
+The web app and the server are separate packages that talk only over Socket.IO.
 
-| Added this event | What it does |
+## Run it locally
+
+```bash
+npm install                 # web app
+npm --prefix server install # server
+
+# terminal 1: multiplayer server on :3001
+npm run server:dev
+
+# terminal 2: web app on :5173
+npm run dev
+```
+
+Open http://localhost:5173. Solo works without the server (the bots just don't talk);
+multiplayer needs it.
+
+To test two players, use two browser profiles (or one normal and one private window).
+Two tabs in the same profile share a player id.
+
+## Environment
+
+**Web app** (`.env.local`, all optional, all public: `VITE_*` values ship in the bundle):
+
+| Var | Default | |
+|---|---|---|
+| `VITE_SOCKET_URL` | `http://localhost:3001` on localhost, otherwise the production server | Multiplayer server. Any build can also be pointed elsewhere at runtime with `?server=<url>` (remembered on that device; `?server=` clears it). |
+| `VITE_SHOW_NETSTATS` | `false` | Round-trip time and FPS overlay. `?netstats=1` also works. |
+
+**Server** (`server/.env`, see [`server/.env.example`](server/.env.example)):
+
+| Var | |
 |---|---|
-| **Arc + `ChaseStake.sol`** | Per-match USDC escrow with join/settle/refund, deployed to Arc testnet |
-| **Privy embedded wallets** | Email sign-in → funded wallet, no extension, no seed phrase |
-| **Automatic USDC faucet** | 2 USDC to every new player so they can afford a buy-in |
-| **The Graph subgraph** | Indexes the escrow — *and feeds the agents their targets* |
-| **World ID Selfie Check** | Proof-of-human gate so one person can't farm the faucet |
-| **Agent threat model** | Agents prioritise players who are up money, read live from the subgraph |
-| **Settlement authority** | Server posts the payout on-chain when a match resolves |
+| `CORS_ORIGIN` | Comma-separated allowed origins. Required in production. |
+| `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL` | Any OpenAI-compatible endpoint. Gives the bots their personality and taunts. Without it the bots still play, silently. **Secret; server only.** |
 
-The two integrations worth reading the code for are **[The Graph → agent targeting](#the-graph--the-agents-on-chain-threat-model)**
-and **[World ID → faucet](#world-id--a-faucet-that-cant-be-farmed)**, both below.
-
-### 0G Compute — the agents' brains (pre-existing, still load-bearing)
-
-| Service | Real work it does |
-|---|---|
-| **0G Compute** (Router) | LLM inference sets each agent's strategy, persona and live taunt |
-
-- **0G key set** → agents hunt / flee / guard / intercept, coordinate, and taunt.
-- **0G key removed** → agents collapse to fallback steering and an **"AI: 0G ○ offline"** pill appears.
-
-> **All secrets are server-side only** (`server/` env). Never prefixed `NEXT_PUBLIC_`, never in
-> the browser bundle or git — a leaked funded key spends real testnet balance. See
-> [`server/.env.example`](server/.env.example).
-
-> 🏗️ **[Architecture diagram + match lifecycle →](submission/ARCHITECTURE.md)** — how the
-> browser, socket server, Arc escrow, subgraph and agent brains fit together, and where the
-> money moves.
-
-### The Graph — the agents' on-chain threat model
-
-The AI opponents don't just see the arena, they see **who they're playing**. Every match is
-staked in USDC through the `ChaseStake` escrow on Arc; a subgraph indexes that escrow, and
-the agent brains read it to decide **who to hunt**.
-
-```
-ChaseStake (Arc)  ──events──▶  subgraph  ──GraphQL──▶  server  ──▶  0G Compute
-  MatchStaked                  (Studio)     records      join       agent intents
-  MatchSettled                                         userId→wallet   (who to hunt)
-```
-
-A player who is up 4 USDC across six matches gets marked as the primary threat: agents
-prioritise them over a closer but unproven player, guard their escape lanes before they
-ever touch the egg, and taunt them about it by name. A player with no history draws a
-single hunter. **Record changes priority between targets; geometry still decides the
-mechanics.**
-
-| Piece | Where |
-|---|---|
-| Subgraph (schema, mappings, manifest) | [`subgraph/`](subgraph/) |
-| Live-data reader (cached, non-blocking) | [`server/src/graph/playerRecords.ts`](server/src/graph/playerRecords.ts) |
-| userId → wallet → record join | `withOnChainRecords()` in [`server/src/index.ts`](server/src/index.ts) |
-| Threat-assessment prompt | `SYSTEM_PROMPT` in [`server/src/agents/agentBrain.ts`](server/src/agents/agentBrain.ts) |
-| Player-facing leaderboard | [`app/components/Leaderboard.tsx`](app/components/Leaderboard.tsx) |
-
-Data is live from Subgraph Studio, never mocked. The reader is a **synchronous cache read**
-that never awaits inside the match loop — a slow or unreachable subgraph costs the 6s
-inference budget nothing, and the agents simply degrade to spatial-only reasoning. Verify
-the source yourself:
+## Build and deploy
 
 ```bash
-curl -s -X POST "$SUBGRAPH_URL" -H 'Content-Type: application/json' \
-  -d '{"query":"{ players(first: 10, orderBy: netProfit, orderDirection: desc) { id matchesPlayed matchesWon netProfit } }"}'
+npm run build     # typecheck + production build into dist/
+npm run preview   # serve dist/ locally
 ```
 
-### World ID — a faucet that can't be farmed
+- **Web app → Vercel.** [`vercel.json`](vercel.json) builds with `npm run build`, serves
+  `dist/`, and rewrites unknown paths to `index.html` so deep links like `/join/ABC123`
+  work. Set `VITE_SOCKET_URL` in the project env if the server isn't at the default URL.
+- **Server → Render.** [`render.yaml`](render.yaml) is a Blueprint (`rootDir: server`,
+  health check `/health`, region Frankfurt). Set `CORS_ORIGIN` to the site URL and the
+  `AI_*` vars.
 
-New players get 2 USDC automatically so they can afford a ranked buy-in. The faucet's
-uniqueness keys were an Arc address and a Privy user id — and Privy signs you in with an
-email, so **ten inboxes were ten "new players" and twenty USDC.** A real sybil hole in a
-faucet holding real money.
+## Installable (PWA)
 
-**World ID Selfie Check** closes it. The nullifier it returns is deterministic per
-(person, app, action) and unlinkable across apps: one live human, one claim, no identity.
-We never learn a name and never see a face.
+The production build registers a service worker that precaches the whole game (code,
+sprites, tiles, audio, fonts), so once it's loaded it installs to the home screen and plays
+solo with no connection. New versions download in the background and offer an **Update**
+button, never during a match. Android and desktop Chrome get an **Install app** button on
+the home screen; iOS Safari gets a one-time "Share → Add to Home Screen" hint.
 
-It's deliberately the *low-assurance* credential. Orb Proof of Human would be stronger and
-would also mean "go find an Orb before you can play a browser game" — the wrong trade for
-a 2 USDC faucet. Selfie Check is the amount of certainty the risk actually justifies.
+Service workers only run in production builds; check with `npm run build && npm run preview`.
 
-| Piece | Where |
-|---|---|
-| Proof request signing + verification | [`server/src/world/selfieCheck.ts`](server/src/world/selfieCheck.ts) |
-| Third uniqueness key on the ledger | [`server/src/arc/faucet.ts`](server/src/arc/faucet.ts) |
-| Claim UI | [`app/components/WorldFaucetGate.tsx`](app/components/WorldFaucetGate.tsx) |
+## Native apps (iOS and Android)
 
-Proofs are verified **server-side** against World's Developer Portal — a browser-asserted
-"verified: true" is worth nothing, and the nullifier that keys the ledger has to be one
-the server watched World confirm. The gate only appears for players the faucet would
-actually pay; anyone already funded is never asked. Unset the keys and the faucet reverts
-to its older behaviour, which the boot log states outright.
-
-### Base gameplay (carried over from the Chase engine)
-
-- 4 characters, each with a unique power-up (unlocks at 15s): Doux (Super Speed), Mort (Earthquake), Tard (Invincibility Shield), Vita (Teleport)
-- Single player (vs AI agents) or multiplayer (2–4 players via Socket.io)
-- Proximity voice chat, installable landscape PWA
-
-### Power-Ups
-
-| Character | Power-Up |
-|---|---|
-| Skinny Flash | Speed Trail — 2.5x speed for 3s |
-| Fat Jumper | Earthquake — stuns nearby players |
-| Muscle Man | Power Punch — knocks back target |
-| Alien Walker | Teleport — instant repositioning |
-| Shadow Creep | Invisibility — vanish for 5s |
-| Dog Hybrid | Force Field — invulnerable for 3s |
-
-Controls: **WASD / Arrow Keys** to move, **SPACEBAR** to use power-up.
-
----
-
-## Tech Stack
-
-Three parts, each self-contained:
-
-- **Shell** (`app/`): Next.js 16 + React 19, TypeScript, Tailwind, Zustand
-- **Game** (`game-app/`): React + TypeScript (Vite) + Phaser 3
-- **Backend** (`server/`): Express + Node + TypeScript with Socket.IO (run via `tsx`)
-- **Chain** (`packages/contracts-arc/`): `ChaseStake.sol` on Arc testnet
-- **Indexing** (`subgraph/`): The Graph, deployed to Subgraph Studio
-- **Wallets**: Privy embedded wallets over wagmi + viem
-
-No database. Match state is in-memory on the socket server and settles on-chain; the
-leaderboard and the agents' threat model are both read from the subgraph, so the only
-durable state is the escrow itself.
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env.local` and fill in:
-
-**`.env.local`** (the Next shell — these ship to the browser, so nothing secret):
+The same web build runs inside [Capacitor](https://capacitorjs.com) shells in `android/` and
+`ios/`. Native extras: landscape lock, hidden status bar, real haptics, the Android back
+button (opens the pause menu mid-match), and a reconnect check when the app resumes.
 
 ```bash
-NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
-NEXT_PUBLIC_PRIVY_APP_ID=            # https://dashboard.privy.io — without it, ranked play is disabled
-NEXT_PUBLIC_ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
-NEXT_PUBLIC_ARC_CHASESTAKE_ADDRESS=0xD648def45026f437351D797dC3574fa97507BA83
-NEXT_PUBLIC_SUBGRAPH_URL=            # Subgraph Studio query URL — powers the leaderboard
+npm run android   # build, sync, open in Android Studio
+npm run ios       # build, sync, open in Xcode (macOS)
+npm run apk       # build a debug APK from the command line (needs the Android SDK)
 ```
 
-**`server/.env`** (never committed — see `server/.env.example` for the annotated version):
+- **APK without Android Studio:** every push builds a debug APK on GitHub Actions
+  ([`.github/workflows/android.yml`](.github/workflows/android.yml)). Download it from the
+  run's **Artifacts** and sideload it.
+- **Server CORS:** add `https://localhost` (Android) and `capacitor://localhost` (iOS) to the
+  server's `CORS_ORIGIN`.
+- **Bundle id:** `fun.chasedinosaurs.app` in [`capacitor.config.ts`](capacitor.config.ts).
+  It's permanent once published, so confirm it before the first store upload.
+- **Icons and splash:** generated from `resources/` with
+  `npx @capacitor/assets generate --assetPath resources`.
 
-```bash
-ARC_PRIVATE_KEY=        # settlement authority; the wallet ChaseStake records as `server`
-FAUCET_PRIVATE_KEY=     # SEPARATE wallet that drips 2 USDC to each new player
-OG_ROUTER_API_KEY=      # 0G Compute — without it agents fall back to scripted play
-SUBGRAPH_URL=           # same Studio URL; lets agents factor in players' on-chain records
-WORLD_APP_ID=           # developer.world.org — arms the Selfie Check gate on the faucet
-WORLD_RP_ID=
-WORLD_SIGNING_KEY=      # SECRET: signs proof requests
-WORLD_ENVIRONMENT=staging
-```
+## How a match works
 
-The faucet and settlement keys are deliberately different wallets: the faucet gives money to
-anyone who asks, while the settlement key holds the escrow's authority. One wallet for both
-means a drained faucet is also a match that cannot pay out.
-
-Each key degrades to a no-op rather than crashing, so the server boots with none of them —
-it just logs which features are off. Check the boot lines to see what's live.
-
----
-
-## Local Development
-
-Three independent parts. The **Next.js shell** (`app/`) serves landing/selection/results, the
-**Vite + Phaser game** (`game-app/`) runs gameplay, and the **Express backend** (`server/`)
-relays multiplayer. Shell ↔ game hand off via the URL hash (works cross-origin in dev):
-selecting a map redirects :3000 → :5173, finishing redirects back to :3000/results.
-
-```bash
-# one-time: install each part's deps
-npm install
-cd game-app && npm install && cd ..
-cd server   && npm install && cd ..
-
-# Terminal 1 — Next.js shell (landing / selection / results)
-npm run dev          # http://localhost:3000
-
-# Terminal 2 — Vite + Phaser game
-npm run dev:game     # http://localhost:5173
-
-# Terminal 3 — Express + Socket.IO backend (multiplayer, staking, faucet, 0G)
-npm run socket:dev   # http://localhost:3001
-```
-
-Open [http://localhost:3000](http://localhost:3000) and start a match.
-
-**All three are required.** Terminal 2 is not optional in dev: `/game` points at
-`localhost:5173`, and if that server isn't up the game page 404s with no error explaining
-why. Terminal 3 is required for anything multiplayer, staked, or AI.
-
-Verify everything is actually live before testing — the socket server prints what it can do:
-
-```
-[ai]     Provider ready → 0G Compute (model: qwen2.5-omni)
-[arc]    ChaseStake ready → 0xD648…BA83
-[faucet] 0xe49a…9EfA holds 20.00 USDC — roughly 9 more players
-```
-
-Any line that says *disabled* or *not configured* is a missing key, not a bug.
-
-### Testing two players
-
-Use **two different browser profiles** (a normal window and an incognito one), not two tabs.
-Tabs share one Privy session, so you would be playing yourself from a single wallet. Sign in
-with a different email in each; both are funded automatically on first sign-in.
-
-### Production build
-
-```bash
-npm run build:all    # builds game-app (base=/game-app/), copies dist → public/game-app, then next build
-```
-
-**Use `build:all`, never plain `npm run build`.** `build` compiles only the Next shell and
-leaves `public/game-app/` empty, producing a site that looks fine until someone presses Play
-and gets a 404 — with nothing in the build output warning you.
-
-The game is served from `/game-app/index.html` on the **same domain** as the shell. The shell auto-
-targets that path in production (no env needed); the game uses same-origin relative paths to return
-to the lobby/results.
-
-Then run it — **two processes, not three.** The game is bundled into the shell now, so there
-is no `:5173` in production:
-
-```bash
-# Terminal 1 — Next shell + bundled game
-npm run start          # http://localhost:3000
-
-# Terminal 2 — Express + Socket.IO backend
-npm run socket:start   # http://localhost:3001
-```
-
-**`npm run start` alone is not the app.** It serves the landing page, the lobby and the game
-bundle, so single-player works and everything *looks* fine — but multiplayer, the faucet,
-staking, settlement and the AI agents all live on the socket server. Without Terminal 2 you
-get a lobby that never fills and a Play button that leads to a match with nothing in it.
-
----
-
-## Deployment
-
-Two services: the **Next shell with the game embedded** (Vercel) and the **Socket.IO server** (Render).
-
-### 1. Socket server → Render
-- Push the repo, then Render → **New → Blueprint** (uses [`render.yaml`](render.yaml)): `rootDir: server`,
-  `npm install` + `npm start`, health check `/health`. PORT is injected by Render automatically.
-- Set **`CORS_ORIGIN`** to your site URL (`https://www.chasedinosaurs.fun`). Leave
-  unset to allow any origin.
-
-
-### 2. Next shell + game → Vercel
-- Import the repo. [`vercel.json`](vercel.json) sets the build command to **`npm run build:all`**, which
-  bundles the game into `public/game-app/` before `next build`.
-- Set these **Environment Variables** (Production):
-
-  | Variable | Value |
-  | --- | --- |
-  | `NEXT_PUBLIC_SOCKET_URL` | your Render URL (`https://chase-dinosaurs-4qb2.onrender.com`) |
-  | `VITE_SOCKET_URL` | same Render URL (read by the game build) |
-
-  `NEXT_PUBLIC_GAME_URL` and `VITE_LANDING_URL` are **not needed** — the embedded same-origin paths
-  are the production defaults.
-- Deploy. After it's live, confirm `CORS_ORIGIN` on Render matches the Vercel domain.
-
-See per-app [`​.env.example`](.env.example), [`game-app/.env.example`](game-app/.env.example), and
-[`server/.env.example`](server/.env.example) for the full variable reference.
-
----
-
-## Project Structure
-
-```
-chase/
-├── app/                    # Next.js shell — landing, selection, results
-│   ├── components/         # AudioInitializer, etc.
-│   ├── data/               # characters.ts, maps.ts
-│   ├── store/              # gameStore.ts (Zustand)
-│   ├── utils/              # audioManager.ts
-│   ├── game/page.tsx       # writes localStorage config, redirects to the game
-│   └── page.tsx            # Landing page
-├── game-app/               # Vite + React + Phaser — the actual game
-│   └── src/
-│       ├── scene/          # gameEngine.ts, gameScene.ts, gameShared.ts (Phaser)
-│       ├── components/     # GameCanvas, GameHUD, MobileControls
-│       ├── store/ data/    # standalone copies kept in sync with app/
-│       └── App.tsx         # reads the handoff config, boots the scene
-├── server/                 # Express + Node + TypeScript backend (Socket.IO)
-│   ├── src/index.ts        # rooms + lobby/game relay
-│   └── package.json        # self-contained; run with `tsx`
-├── public/assets/          # Shell sprites; game-app/public/assets holds the tiles
-├── render.yaml             # Render blueprint
-└── supabase_schema.sql     # Database schema
-```
-
-> The three parts are intentionally self-contained — `app/`, `game-app/`, and `server/` each
-> have their own `package.json` and don't import from each other. The game keeps its own copies
-> of `store/`, `data/`, and `audioManager` so it runs without Next.js SSR/StrictMode. There is
-> no shared `game/` folder — don't reintroduce cross-imports.
-
----
+- The arena is generated from a seeded RNG, so every client in a room builds the same map.
+- Each client simulates its own dino and sends its position about 30 times a second; other
+  players are dead-reckoned between packets.
+- The server decides who holds the egg: clients only *claim* it, and the server checks each
+  claim against the positions it has seen and broadcasts the new owner with a sequence
+  number, so every screen agrees. It also runs the clock and names the winner.
+- One client in each room steers the bots and broadcasts their positions. If it drops, the
+  next client takes over within about a second.
+- Bot tactics are local (`src/scene/botTactics.ts`): the nearest chaser goes straight in,
+  the next cuts off the escape, a third covers the lane. Easy / Normal / Hard tune speed,
+  prediction, reaction time, teamwork and power use.
+- Bots talk when something happens (a steal, a loss, closing in, ten seconds left). The
+  server asks the LLM for one short line (`server/src/botVoice.ts`); with no key, or no
+  answer within about a second, the bot uses a canned line for its persona. The results
+  screen gets a one-line roast the same way.
+- The round clock runs off the wall clock (the server's, online), so it keeps real time at
+  any frame rate.
 
 ## License
 
-This repository is **dual-licensed**:
-
-| Path | License |
-|---|---|
-| `packages/` — all ETHOnline 2026 hackathon work | **MIT** — see [`packages/LICENSE`](packages/LICENSE) |
-| Everything else — the Chase game engine | **Proprietary** — see [`LICENSE`](LICENSE) |
-
-**`packages/` (MIT).** Every artifact built during ETHOnline 2026 under the Continuity
-Track — the Arc staking contracts and The Graph subgraph — is open source and free to
-use, copy, modify, and distribute. See [`packages/README.md`](packages/README.md).
-
-**Everything else (proprietary).** © 2026 Shantanu Swami. All rights reserved. Provided
-for review (e.g. hackathon judging) only. No permission is granted to use, copy, modify,
-distribute, or create derivative works without the author's prior written consent.
+Copyright © 2026 [Abstract Studio](https://abstractstudio.in). All rights reserved. See [`LICENSE`](LICENSE).
+Third-party art is credited in [`CREDITS.md`](CREDITS.md) and stays under its authors'
+licenses.
