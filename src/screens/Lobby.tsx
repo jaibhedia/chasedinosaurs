@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Bot, Check, Copy, Globe, Lock, Play, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bot, Check, Copy, Globe, Link2, Lock, Play, Share2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ComingSoon } from '@/components/ComingSoon';
 import { DinoSprite } from '@/components/DinoSprite';
@@ -10,6 +10,8 @@ import { characters } from '@/data/characters';
 import { gameMaps } from '@/data/maps';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { getServerOffset } from '@/lib/socketBridge';
+import { copyText } from '@/lib/clipboard';
+import { extractRoomCode, inviteLink } from '@/lib/roomCode';
 
 interface PublicRoom {
   room_code: string;
@@ -36,7 +38,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
   } = useGameStore();
   const { socket, ensureConnected, createRoom, joinRoom, quickPlay, setPlayerReady, chooseCharacter, startGame, leaveRoom } = useSocket();
 
-  const [roomCode, setRoomCode] = useState((params.code ?? '').toUpperCase());
+  const [roomCode, setRoomCode] = useState(extractRoomCode(params.code ?? ''));
   const [busy, setBusy] = useState<'create' | 'join' | null>(null);
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [isInRoom, setIsInRoom] = useState(false);
@@ -44,7 +46,8 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
   const [isPublic, setIsPublic] = useState(true);
   const [publicRooms, setPublicRooms] = useState<PublicRoom[]>([]);
   const [charNotice, setCharNotice] = useState('');
-  const [copied, setCopied] = useState(false);
+  /** Which copy/share button just worked, for its "Copied!" label. */
+  const [copied, setCopied] = useState<'code' | 'link' | 'share' | 'failed' | null>(null);
   const autoJoinTried = useRef(false);
   const rejoinTried = useRef(false);
   const quickTried = useRef(false);
@@ -216,8 +219,9 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
   };
 
   const handleJoin = async (codeIn?: string) => {
-    const code = (codeIn ?? roomCode).trim().toUpperCase();
+    const code = extractRoomCode(codeIn ?? roomCode);
     if (!code) { setError('Enter a room code.'); return; }
+    if (code.length !== 6) { setError('Room codes are 6 characters.'); return; }
     const character = selectedCharacter ?? characters[0];
     setBusy('join');
     setError('');
@@ -249,7 +253,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
   useEffect(() => {
     if (!params.code || autoJoinTried.current || !socket) return;
     autoJoinTried.current = true;
-    void handleJoin(params.code);
+    void handleJoin(extractRoomCode(params.code));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.code, socket]);
 
@@ -264,13 +268,20 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
     if (quick) navigate('/play');
   };
 
-  const copyInvite = async () => {
-    const link = `${window.location.origin}/join/${roomCode}`;
+  const flash = (what: 'code' | 'link' | 'share' | 'failed') => {
+    setCopied(what);
+    setTimeout(() => setCopied((c) => (c === what ? null : c)), 1800);
+  };
+  // Copy exactly one thing: the code alone, or the link alone. The old single button
+  // opened the share sheet on every device that had one (Macs included), and a shared
+  // "Join my room: CODE" message pasted into the code box came out as "JOIN M".
+  const copyCode = async () => flash((await copyText(roomCode)) ? 'code' : 'failed');
+  const copyLink = async () => flash((await copyText(inviteLink(roomCode))) ? 'link' : 'failed');
+  const canShare = typeof navigator.share === 'function' && window.matchMedia?.('(pointer: coarse)').matches;
+  const shareInvite = async () => {
     try {
-      if (navigator.share) await navigator.share({ title: 'Chase Dinosaurs', text: `Join my room: ${roomCode}`, url: link });
-      else await navigator.clipboard.writeText(link);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.share({ title: 'Chase Dinosaurs', text: `Play Chase Dinosaurs with me. Room code: ${roomCode}`, url: inviteLink(roomCode) });
+      flash('share');
     } catch { /* share sheet dismissed */ }
   };
 
@@ -292,6 +303,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
   };
 
   const shell = 'h-[100dvh] w-full px-solid-bg flex flex-col overflow-y-auto p-3 md:p-4';
+  const chip = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[#4d2813] pixel-border text-sm font-semibold text-[#ffc93c] hover:brightness-110';
   const shellStyle = {
     paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 0.75rem)',
     paddingRight: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)',
@@ -366,10 +378,11 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
               <input
                 type="text"
                 value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                // No maxLength: it cut a pasted message or link to its first 6 letters
+                // before we could pull the code out of it.
+                onChange={(e) => { setRoomCode(extractRoomCode(e.target.value)); setError(''); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') void handleJoin(); }}
                 placeholder="CODE"
-                maxLength={6}
                 autoCapitalize="characters"
                 autoCorrect="off"
                 spellCheck={false}
@@ -438,14 +451,26 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
           ) : (
           <div className="p-3 md:p-5 pixel-panel text-center">
             <p className="text-[#f4e7c3]/70 text-sm">Room code</p>
-            <p className="text-3xl md:text-5xl font-bold text-[#f4e7c3] tracking-[0.3em]" data-testid="room-code">{roomCode}</p>
-            <button
-              type="button"
-              onClick={copyInvite}
-              className="mt-1 inline-flex items-center gap-1.5 text-sm text-[#ffc93c] hover:brightness-110"
-            >
-              <Copy className="w-3.5 h-3.5" /> {copied ? 'Copied!' : 'Share invite link'}
-            </button>
+            {/* select-all: one tap selects the whole code, for when copying is blocked. */}
+            <p className="text-3xl md:text-5xl font-bold text-[#f4e7c3] tracking-[0.3em] pl-[0.3em] select-all" style={{ WebkitTouchCallout: 'default' }} data-testid="room-code">{roomCode}</p>
+            <div className="mt-2 flex flex-wrap justify-center gap-1.5 md:gap-2">
+              <button type="button" onClick={() => void copyCode()} className={chip} data-testid="copy-code">
+                {copied === 'code' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied === 'code' ? 'Copied!' : 'Copy code'}
+              </button>
+              <button type="button" onClick={() => void copyLink()} className={chip} data-testid="copy-link">
+                {copied === 'link' ? <Check className="w-3.5 h-3.5" /> : <Link2 className="w-3.5 h-3.5" />}
+                {copied === 'link' ? 'Copied!' : 'Copy invite link'}
+              </button>
+              {canShare && (
+                <button type="button" onClick={() => void shareInvite()} className={chip} data-testid="share-invite">
+                  <Share2 className="w-3.5 h-3.5" /> Share
+                </button>
+              )}
+            </div>
+            {copied === 'failed' && (
+              <p className="mt-1 text-sm text-[#ffb36b]">Couldn't copy. Tap and hold the code to copy it.</p>
+            )}
           </div>
           )}
 

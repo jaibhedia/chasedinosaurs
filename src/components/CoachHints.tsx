@@ -50,7 +50,9 @@ export function CoachHints() {
     const candidates: Array<[string, boolean, string]> = [
       ['egg', !holder, 'Run to the golden egg! Follow the yellow arrow.'],
       ['have', !!me.hasEgg, 'You have it! Keep away until the timer hits zero.'],
-      ['chase', !!holder && !me.hasEgg, `Catch ${holder?.character.name ?? 'them'} to steal the egg.`],
+      // No name: the egg can change hands while the hint is up, and a named one then
+      // contradicts the "CHASE <name>" chip in the HUD.
+      ['chase', !!holder && !me.hasEgg, 'Catch whoever has the egg to steal it.'],
       ['power', !!me.powerUpReady, touch ? 'Your power is ready: tap the ⚡ button.' : 'Your power is ready: press SPACE.'],
       ['final', timeRemaining > 0 && timeRemaining <= 10, 'Ten seconds! Hold the egg at zero to win.'],
     ];

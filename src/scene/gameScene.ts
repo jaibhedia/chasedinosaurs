@@ -180,6 +180,8 @@ export class GameScene extends Phaser.Scene {
   /** Our position in the deterministic authority order; stagger failover by rank so two
    *  clients don't promote themselves in the same instant. */
   private authorityRank = 0;
+  /** Wall-clock time of our last frame, to notice when our own loop was frozen. */
+  private lastFrameAt = 0;
 
   // Window-level input handlers (bound in create, removed on shutdown). Window-level
   // — not canvas-scoped — so movement keeps working even when a HUD button has focus.
@@ -349,6 +351,9 @@ export class GameScene extends Phaser.Scene {
   private maybeTakeOverAgents(now: number): void {
     if (!this.isOnlineMp || this.agentAuthority) return;
     if (!this.gsPlayers.some((p) => p.isBot)) return;
+    // Bots don't move in the countdown, and the clients' scenes don't all start at the
+    // same moment, so only start counting silence once the match is on.
+    if (this.currentPhase !== 'playing') return;
     // Nothing heard yet at all: start the clock from now rather than from 0, or every
     // client promotes itself on the first frame of the match.
     if (this.lastAgentStateAt === 0) { this.lastAgentStateAt = now; return; }
@@ -361,7 +366,38 @@ export class GameScene extends Phaser.Scene {
 
     this.agentAuthority = true;
     this.lastAgentStateAt = now;
+    this.adoptBots();
     console.info('[agents] authority went quiet — taking over bot steering');
+  }
+
+  /**
+   * We just started steering the bots. Until now they were drawn from the network
+   * (remoteNet) and steered by someone else, so pick them up from where they are: their
+   * last known velocity, fresh aims, no stale stuck timers. Dropping their remoteNet
+   * entries is what makes the sprites follow our steering: the render loop used to keep
+   * drawing each bot at its last network position, so on the new steering client the
+   * bots froze on screen for the rest of the match while they kept moving (and grabbing
+   * the egg) for everyone else.
+   */
+  private adoptBots(): void {
+    for (const b of this.gsPlayers) {
+      if (!b.isBot) continue;
+      const net = this.remoteNet[b.id];
+      this.botVel[b.id] = net ? { vx: net.vx, vy: net.vy } : { vx: 0, vy: 0 };
+      this.botLastPos[b.id] = { x: b.x, y: b.y };
+      delete this.botStuckAccum[b.id];
+      delete this.remoteNet[b.id];
+      const mind = this.botMind[b.id];
+      if (mind) { mind.aim = null; mind.aimAt = 0; }
+    }
+    this.lastRoleAt = 0;
+  }
+
+  /** Someone else is steering the bots: stop, and draw them from the network again. */
+  private standDownAgents(reason: string): void {
+    this.agentAuthority = false;
+    this.lastAgentStateAt = performance.now();
+    console.info(`[agents] ${reason} — standing down`);
   }
 
   create() {
@@ -387,6 +423,8 @@ export class GameScene extends Phaser.Scene {
     this.cullables = [];
     this.lastCullView = { x: NaN, y: NaN, w: 0, h: 0 };
     this.botStuckAccum = {};
+    this.lastAgentStateAt = 0;
+    this.lastFrameAt = 0;
     this.tagBackBlock = null;
     this.lastTagTime = 0;
 
@@ -699,10 +737,20 @@ export class GameScene extends Phaser.Scene {
     const dt = Math.min(delta / 1000, MAX_SIM_DELTA);
     const store = useGameStore.getState();
     this.syncPlayersFromStore();
+    // Our own loop was frozen (phone locked, app switched, tab in the background) for
+    // longer than the takeover window, so if we were steering the bots, someone else has
+    // taken over by now. Give way rather than pull the bots back to where we last left
+    // them; if nobody else is steering after all, we take them back after the grace.
+    const wall = Date.now();
+    if (this.lastFrameAt && wall - this.lastFrameAt > AGENT_TAKEOVER_MS && this.isOnlineMp && this.agentAuthority
+      && this.gsPlayers.some((p) => p.isBot)) {
+      this.standDownAgents('back from a pause');
+    }
+    this.lastFrameAt = wall;
     if (this.isOnlineMp) this.updateMultiplayerNet(_time);
     // Promote ourselves if whoever was steering the bots has gone silent, so a host
     // dropping mid-match doesn't leave the agents frozen for everyone else.
-    this.maybeTakeOverAgents(_time);
+    this.maybeTakeOverAgents(performance.now());
     this.updateMinimap(_time);
     this.updateEggArrow();
 
@@ -755,7 +803,8 @@ export class GameScene extends Phaser.Scene {
       if (p.id !== 'player') {
         // Dead-reckon remote players along their last-known velocity so they glide
         // smoothly between 30Hz packets instead of stuttering toward each stale point.
-        const net = this.remoteNet[p.id];
+        // Bots we steer are drawn where our steering puts them, never from the network.
+        const net = p.isBot && this.agentAuthority ? undefined : this.remoteNet[p.id];
         if (net) {
           const age = Math.min((this.time.now - net.t) / 1000, REMOTE_EXTRAPOLATE_MS / 1000);
           tx = net.x + net.vx * age;
@@ -2100,8 +2149,9 @@ export class GameScene extends Phaser.Scene {
         if (!payload || !Array.isArray(payload.agents)) return;
 
         // Hearing anything at all means an authority is alive, which is what suppresses
-        // our own failover timer.
-        this.lastAgentStateAt = this.time.now;
+        // our own failover timer. Real time, not the game clock: the game clock stops
+        // while our tab is frozen, and packets still arrive then.
+        this.lastAgentStateAt = performance.now();
 
         if (this.agentAuthority) {
           // Two clients steering at once — possible for a moment after a failover, or if
@@ -2110,8 +2160,11 @@ export class GameScene extends Phaser.Scene {
           // negotiating. We only ever stand DOWN here; the winner simply keeps going.
           const from = String(payload.from ?? '');
           if (from && from < String(this.localUserId)) {
-            this.agentAuthority = false;
-            console.info('[agents] lower-ranked peer is steering — standing down');
+            this.standDownAgents('lower-ranked peer is steering');
+          } else if (Date.now() - this.lastFrameAt > AGENT_TAKEOVER_MS) {
+            // Our loop is frozen (backgrounded) and someone took over meanwhile: theirs is
+            // the live game, ours is where the bots were when we stopped.
+            this.standDownAgents('peer took over while we were away');
           } else {
             return; // We hold authority; their positions are not ours to apply.
           }
@@ -2832,7 +2885,7 @@ export class GameScene extends Phaser.Scene {
   /** Velocity in px/s for anyone: input for you, network for remote players, observed for bots. */
   private velocityOf(p: Player): { vx: number; vy: number } {
     if (p.id === 'player') return this.playerVelocity['player'] ?? { vx: 0, vy: 0 };
-    const net = this.remoteNet[p.id];
+    const net = p.isBot && this.agentAuthority ? undefined : this.remoteNet[p.id];
     if (net) return { vx: net.vx, vy: net.vy };
     return this.botVel[p.id] ?? { vx: 0, vy: 0 };
   }

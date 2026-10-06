@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Chase Dinosaurs</string>
     <string name="title_activity_main">Chase Dinosaurs</string>
-    <string name="package_name">fun.chasedinosaurs.app</string>
-    <string name="custom_url_scheme">fun.chasedinosaurs.app</string>
+    <string name="package_name">xyz.chasedinosaurs.app</string>
+    <string name="custom_url_scheme">xyz.chasedinosaurs.app</string>
 </resources>

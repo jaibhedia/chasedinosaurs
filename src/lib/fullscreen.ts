@@ -1,4 +1,4 @@
-import { isNativeApp, isStandalone } from '@/lib/platform';
+import { isNativeApp } from '@/lib/platform';
 
 /**
  * Phones go fullscreen on their own: on the first tap (browsers only allow it in answer
@@ -6,9 +6,14 @@ import { isNativeApp, isStandalone } from '@/lib/platform';
  * landscape game that wants the whole screen. Fullscreen also lets Android lock the
  * orientation to landscape.
  *
- * Not used for the installed app (the manifest already opens it fullscreen), the store
- * apps (native fullscreen), or desktops. iPhone Safari has no fullscreen API for pages,
- * so there the feature check simply finds nothing to call.
+ * Installed apps too: the manifest asks for fullscreen, but an app installed as a plain
+ * home-screen shortcut, by a browser that doesn't do fullscreen apps, or from an older
+ * manifest opens as an ordinary window with the status and navigation bars showing. It
+ * used to skip every installed app, so exactly those stayed windowed. Only an app that
+ * really is fullscreen already (display-mode: fullscreen) is left alone.
+ *
+ * Not used in the store apps (native fullscreen) or on desktops. iPhone Safari has no
+ * fullscreen API for pages, so there the feature check simply finds nothing to call.
  */
 function isTouchPhoneOrTablet(): boolean {
   return window.matchMedia?.('(pointer: coarse)').matches ?? false;
@@ -16,7 +21,8 @@ function isTouchPhoneOrTablet(): boolean {
 
 function inFullscreen(): boolean {
   const d = document as Document & { webkitFullscreenElement?: Element | null };
-  return !!(document.fullscreenElement || d.webkitFullscreenElement);
+  return !!(document.fullscreenElement || d.webkitFullscreenElement)
+    || (window.matchMedia?.('(display-mode: fullscreen)').matches ?? false);
 }
 
 async function enterFullscreen() {
@@ -33,7 +39,7 @@ async function enterFullscreen() {
 }
 
 export function initAutoFullscreen() {
-  if (isNativeApp() || isStandalone()) return;
+  if (isNativeApp()) return;
   const onTap = () => {
     if (!isTouchPhoneOrTablet() || inFullscreen()) return;
     void enterFullscreen();
