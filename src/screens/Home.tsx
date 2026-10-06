@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Heart, Play, Send, Twitter } from 'lucide-react';
+import { Heart, Play, Send, ShoppingBag, Twitter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGameStore } from '@/store/gameStore';
 import { usePageTitle } from '@/hooks/usePageTitle';
@@ -11,6 +11,7 @@ import { SITE } from '@/config';
 export default function Home() {
   const navigate = useNavigate();
   const initUserId = useGameStore((s) => s.initUserId);
+  const [shopNote, setShopNote] = useState(false);
   usePageTitle();
 
   useEffect(() => {
@@ -83,7 +84,23 @@ export default function Home() {
             <Heart className="w-4 h-4 sm:w-5 sm:h-5 short:w-4 short:h-4 text-[#e8503a] fill-current" />
             Support
           </Link>
+          {/* The shop isn't built yet: the button says so instead of going anywhere. */}
+          <button
+            type="button"
+            onClick={() => { setShopNote(true); window.setTimeout(() => setShopNote(false), 2500); }}
+            className="relative h-10 sm:h-14 short:h-10 pixel-button flex items-center gap-2 !px-3 sm:!px-4 !py-0 text-xs sm:text-sm short:text-xs opacity-90 hover:opacity-100 transition-opacity"
+            data-testid="home-shop"
+          >
+            <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 short:w-4 short:h-4 text-[#ffc93c]" />
+            Shop
+            <span className="absolute -top-2 -right-2 px-1 bg-[#e8503a] text-[#f4e7c3] text-[8px] sm:text-[9px] leading-tight border-2 border-[#11111c]">SOON</span>
+          </button>
         </div>
+        {shopNote && (
+          <p className="px-2 py-0.5 bg-black/60 text-[#ffc93c] text-xs sm:text-sm" role="status" data-testid="shop-note">
+            Shop, skins and upgrades are coming soon.
+          </p>
+        )}
 
         <div className="flex items-center gap-3 text-[#f4e7c3]/80 text-[10px] sm:text-xs bg-black/40 px-2 py-0.5">
           <Link to="/privacy" className="hover:text-[#FFC93C] transition-colors">Privacy</Link>

@@ -6,7 +6,7 @@ everyone else hunts them. Whoever is holding it when the timer hits zero wins.
 - **Solo** against three bots on Easy, Normal or Hard. Works offline.
 - **Multiplayer** with up to four players over room codes or public rooms. Bots fill the
   empty seats. Proximity voice chat.
-- Four dinos, each with a power that unlocks 15 seconds in: Super Speed, Earthquake,
+- Four dinos, each with a power that unlocks 15 seconds in: Super Speed, Quick Blast,
   Invincibility Shield, Teleport.
 
 Play: **https://chasedinosaurs.fun** · Roadmap: [`ROADMAP.md`](ROADMAP.md)
@@ -115,7 +115,7 @@ npm run apk       # build a debug APK from the command line (needs the Android S
   run's **Artifacts** and sideload it.
 - **Server CORS:** add `https://localhost` (Android) and `capacitor://localhost` (iOS) to the
   server's `CORS_ORIGIN`.
-- **Bundle id:** `xyz.chasedinosaurs.app` in [`capacitor.config.ts`](capacitor.config.ts).
+- **Bundle id:** `fun.chasedinosaurs.app` in [`capacitor.config.ts`](capacitor.config.ts).
   It's permanent once published, so confirm it before the first store upload.
 - **Icons and splash:** generated from `resources/` with
   `npx @capacitor/assets generate --assetPath resources`.

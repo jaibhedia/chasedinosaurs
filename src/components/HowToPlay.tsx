@@ -20,7 +20,7 @@ const SLIDES = [
   {
     icon: Zap,
     title: 'Use your power',
-    body: 'Every dino has a power that unlocks 15 seconds in: speed, earthquake, shield or teleport. Press SPACE, or the power button on a phone. It reloads faster near the end.',
+    body: 'Every dino has a power that unlocks 15 seconds in: speed, blast, shield or teleport. Press SPACE, or the power button on a phone. It reloads faster near the end.',
   },
 ];
 

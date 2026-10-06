@@ -166,6 +166,10 @@ export function PowerUpHudCluster({
           transition={{ duration: 1.1, repeat: tappable ? Infinity : 0, ease: 'easeInOut' }}
           whileTap={tappable ? { scale: 0.92 } : undefined}
         >
+          {/* Invisible hit area over the whole ring plus a margin. The button itself is
+              only the inner disc (38px of a 54px control), so a thumb landing on the ring
+              or just outside it missed the press. */}
+          <span aria-hidden className="absolute rounded-full" style={{ inset: -(stroke + 3 + 12) }} />
           {charging ? (
             <span
               className="px-heading tabular-nums"
