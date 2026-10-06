@@ -90,6 +90,12 @@ solo with no connection. New versions download in the background and offer an **
 button, never during a match. Android and desktop Chrome get an **Install app** button on
 the home screen; iOS Safari gets a one-time "Share → Add to Home Screen" hint.
 
+Installed, it opens fullscreen in landscape. If a phone opens it in a window anyway (a
+plain home-screen shortcut, a browser without fullscreen apps, an install from an older
+manifest), the first tap takes it fullscreen ([`src/lib/fullscreen.ts`](src/lib/fullscreen.ts)).
+Long-press the icon for Solo, Quick Play and Friends shortcuts. iPhone Safari can't hide its
+bars for a web page; installed to the Home Screen it opens without them.
+
 Service workers only run in production builds; check with `npm run build && npm run preview`.
 
 ## Native apps (iOS and Android)
@@ -109,7 +115,7 @@ npm run apk       # build a debug APK from the command line (needs the Android S
   run's **Artifacts** and sideload it.
 - **Server CORS:** add `https://localhost` (Android) and `capacitor://localhost` (iOS) to the
   server's `CORS_ORIGIN`.
-- **Bundle id:** `fun.chasedinosaurs.app` in [`capacitor.config.ts`](capacitor.config.ts).
+- **Bundle id:** `xyz.chasedinosaurs.app` in [`capacitor.config.ts`](capacitor.config.ts).
   It's permanent once published, so confirm it before the first store upload.
 - **Icons and splash:** generated from `resources/` with
   `npx @capacitor/assets generate --assetPath resources`.

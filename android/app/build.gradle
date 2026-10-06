@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "fun.chasedinosaurs.app"
+    namespace = "xyz.chasedinosaurs.app"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "fun.chasedinosaurs.app"
+        applicationId "xyz.chasedinosaurs.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

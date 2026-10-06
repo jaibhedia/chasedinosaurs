@@ -7,7 +7,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * the game's domain; confirm it before the first upload.
  */
 const config: CapacitorConfig = {
-  appId: 'fun.chasedinosaurs.app',
+  appId: 'xyz.chasedinosaurs.app',
   appName: 'Chase Dinosaurs',
   webDir: 'dist',
   android: {

@@ -16,8 +16,12 @@ export default defineConfig({
       manifest: {
         id: '/',
         name: 'Chase Dinosaurs',
-        short_name: 'Chase',
-        description: 'Grab the egg and survive the chase. A fast chase game, solo against bots or with friends.',
+        // "Chase" alone read like a bank's app on the home screen.
+        short_name: 'Chase Dinos',
+        description:
+          'Grab the golden egg and survive everyone hunting you for it. A fast pixel chase game: one-minute solo rounds against bots, two-minute online matches with friends. Solo plays offline.',
+        lang: 'en',
+        dir: 'ltr',
         start_url: '/',
         scope: '/',
         display: 'fullscreen',
@@ -26,10 +30,29 @@ export default defineConfig({
         background_color: '#14141f',
         theme_color: '#261309',
         categories: ['games', 'entertainment'],
+        prefer_related_applications: false,
+        // Opening the app while it's already running brings that window back, mid-match
+        // included, instead of starting it over at the home screen.
+        launch_handler: { client_mode: ['focus-existing', 'auto'] },
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
           { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+        // The install sheet's preview (Android and desktop Chrome). "wide" ones show on
+        // desktop, the others on phones. Not precached: they're only for installing.
+        screenshots: [
+          { src: '/screenshots/play-wide.jpg', sizes: '1280x720', type: 'image/jpeg', form_factor: 'wide', label: 'Grab the golden egg and outrun the pack' },
+          { src: '/screenshots/home-wide.jpg', sizes: '1280x720', type: 'image/jpeg', form_factor: 'wide', label: 'Solo against bots, or online with friends' },
+          { src: '/screenshots/play-phone.jpg', sizes: '1688x780', type: 'image/jpeg', label: 'Touch controls: joystick and power button' },
+          { src: '/screenshots/room-phone.jpg', sizes: '1688x780', type: 'image/jpeg', label: 'Play with friends using a room code' },
+        ],
+        // Long-press the app icon to jump straight in.
+        shortcuts: [
+          { name: 'Solo against bots', short_name: 'Solo', description: 'A one-minute round against three bots', url: '/solo', icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Quick Play', short_name: 'Quick Play', description: 'Jump into an online match', url: '/quick', icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Play with friends', short_name: 'Friends', description: 'Create or join a room', url: '/lobby', icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }] },
         ],
       },
       workbox: {

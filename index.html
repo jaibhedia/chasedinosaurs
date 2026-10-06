@@ -11,16 +11,23 @@
     <meta name="application-name" content="Chase Dinosaurs" />
     <meta name="author" content="Abstract Studio" />
     <link rel="canonical" href="https://chasedinosaurs.fun/" />
+    <meta name="color-scheme" content="dark" />
+    <!-- A room code like 482937 must not turn into phone-number links on iOS. -->
+    <meta name="format-detection" content="telephone=no" />
 
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#261309" />
+    <!-- Installed to the home screen: open without browser bars, drawn edge to edge
+         under the status bar (the layout pads itself with safe-area insets). -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Chase" />
+    <meta name="apple-mobile-web-app-title" content="Chase Dinos" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
     <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="Chase Dinosaurs" />
     <meta property="og:title" content="Chase Dinosaurs | Grab the egg. Survive the chase." />
     <meta property="og:description" content="One golden egg. Grab it, then survive everyone hunting you for it. Solo against bots or with friends, free in your browser." />
@@ -31,9 +38,32 @@
     <meta property="og:image:alt" content="Four dinosaurs chasing the one carrying a golden egg across a sunlit plain" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@ShantanuSwami11" />
+    <meta name="twitter:title" content="Chase Dinosaurs | Grab the egg. Survive the chase." />
+    <meta name="twitter:description" content="One golden egg. Grab it, then survive everyone hunting you for it. Solo against bots or with friends, free in your browser." />
     <meta name="twitter:image" content="https://chasedinosaurs.fun/og-image.jpg" />
+    <meta name="twitter:image:alt" content="Four dinosaurs chasing the one carrying a golden egg across a sunlit plain" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "Chase Dinosaurs",
+        "url": "https://chasedinosaurs.fun/",
+        "image": "https://chasedinosaurs.fun/og-image.jpg",
+        "description": "A fast pixel chase game. One golden egg: grab it, and survive everyone hunting you for it. One-minute solo rounds against bots, two-minute online matches with friends.",
+        "genre": ["Action", "Arcade", "Multiplayer"],
+        "gamePlatform": ["Web browser", "Android", "iOS"],
+        "applicationCategory": "Game",
+        "operatingSystem": "Any",
+        "playMode": ["SinglePlayer", "MultiPlayer"],
+        "numberOfPlayers": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 4 },
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "publisher": { "@type": "Organization", "name": "Abstract Studio", "url": "https://abstractstudio.in" }
+      }
+    </script>
   </head>
   <body>
+    <noscript>Chase Dinosaurs needs JavaScript to run. Turn it on and reload.</noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

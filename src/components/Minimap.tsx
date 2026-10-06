@@ -55,9 +55,12 @@ export function Minimap({ isMobile = false }: { isMobile?: boolean }) {
   const wrapCls = isMobile
     ? 'pointer-events-none fixed top-3 z-[54] px-panel p-1'
     : 'pointer-events-none fixed bottom-6 right-6 z-[55] px-panel p-2';
+  // opacity 0.99 (looks the same): as a fully opaque layer over the WebGL canvas, the
+  // panel made Chromium's software renderer skip a mirrored patch of the canvas, a black
+  // or white box at the top right of the game. Not-quite-opaque layers don't hide anything.
   const wrapStyle = isMobile
-    ? { right: 'calc(env(safe-area-inset-right, 0px) + 4.75rem)' }
-    : undefined;
+    ? { right: 'calc(env(safe-area-inset-right, 0px) + 4.75rem)', opacity: 0.99 }
+    : { opacity: 0.99 };
 
   return (
     <div className={wrapCls} style={wrapStyle}>
