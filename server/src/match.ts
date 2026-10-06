@@ -13,8 +13,8 @@
  * latency. See ROADMAP.md (M5) for moving the simulation itself server-side.
  */
 
-/** Must match GAME_DURATION in src/scene/gameShared.ts. */
-export const MATCH_SECONDS = 60;
+/** Online match length. Must match ONLINE_GAME_DURATION in src/scene/gameShared.ts. */
+export const MATCH_SECONDS = 120;
 export const COUNTDOWN_MS = 3000;
 /** Client tag reach: max(TAG_DISTANCE, PLAYER_SIZE * 2.2) in gameShared.ts. */
 const TAG_REACH = 55;

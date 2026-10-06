@@ -12,8 +12,11 @@ interface MobileControlsProps {
   powerUpCooldownMax?: number;
 }
 
+// Sized 25% smaller than launch so the controls cover less of the game on a phone.
 /** How far (px) the knob travels from the centre at full deflection. */
-const MAX_DISTANCE = 48;
+const MAX_DISTANCE = 36;
+/** Knob size (px); placeKnob centres it on the pad. */
+const KNOB = 48;
 /** Touches this far outside the pad still grab it, so a thumb that lands a bit off counts. */
 const GRAB_MARGIN = 28;
 
@@ -37,7 +40,7 @@ export default function MobileControls({
     // The knob is moved by writing its transform directly, not through React state, so
     // it tracks the thumb without a re-render per touchmove.
     const placeKnob = (x: number, y: number) => {
-      if (knobRef.current) knobRef.current.style.transform = `translate(${x - 32}px, ${y - 32}px)`;
+      if (knobRef.current) knobRef.current.style.transform = `translate(${x - KNOB / 2}px, ${y - KNOB / 2}px)`;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -119,7 +122,7 @@ export default function MobileControls({
           activeDuration={activeDuration}
           onPress={pressPower}
           onRelease={releasePower}
-          size={72}
+          size={54}
         />
       </div>
 
@@ -134,37 +137,37 @@ export default function MobileControls({
       >
         <div
           ref={joystickRef}
-          className="relative w-32 h-32 sm:w-36 sm:h-36 md:w-44 md:h-44 overflow-hidden border-[3px] border-[#11111c] bg-[#1a160f] shadow-[0_4px_0_rgba(0,0,0,0.5),inset_0_0_22px_rgba(0,0,0,0.55)]"
+          className="relative w-24 h-24 sm:w-[108px] sm:h-[108px] md:w-[132px] md:h-[132px] overflow-hidden border-[3px] border-[#11111c] bg-[#1a160f] shadow-[0_4px_0_rgba(0,0,0,0.5),inset_0_0_22px_rgba(0,0,0,0.55)]"
         >
           {/* Recessed track frames */}
-          <div className="absolute inset-2 border-2 border-[#4d2813]" />
-          <div className="absolute inset-6 border border-[#4d2813]/60" />
+          <div className="absolute inset-1.5 border-2 border-[#4d2813]" />
+          <div className="absolute inset-[18px] border border-[#4d2813]/60" />
 
           {/* Direction hints */}
           <div className="absolute inset-0 pointer-events-none text-[#f4e7c3]/80">
-            <span className="absolute left-1/2 -translate-x-1/2 top-1 text-base leading-none">▲</span>
-            <span className="absolute left-1/2 -translate-x-1/2 bottom-1 text-base leading-none">▼</span>
-            <span className="absolute top-1/2 -translate-y-1/2 left-1.5 text-base leading-none">◀</span>
-            <span className="absolute top-1/2 -translate-y-1/2 right-1.5 text-base leading-none">▶</span>
+            <span className="absolute left-1/2 -translate-x-1/2 top-1 text-xs leading-none">▲</span>
+            <span className="absolute left-1/2 -translate-x-1/2 bottom-1 text-xs leading-none">▼</span>
+            <span className="absolute top-1/2 -translate-y-1/2 left-1.5 text-xs leading-none">◀</span>
+            <span className="absolute top-1/2 -translate-y-1/2 right-1.5 text-xs leading-none">▶</span>
           </div>
 
           {/* Thumb knob — solid sun fill (no gradient), 64px so the centering offset holds. */}
           <div
             ref={knobRef}
             className="absolute left-1/2 top-1/2"
-            style={{ transform: 'translate(-32px, -32px)', willChange: 'transform' }}
+            style={{ transform: `translate(${-KNOB / 2}px, ${-KNOB / 2}px)`, willChange: 'transform' }}
           >
             <motion.div
-              className="w-16 h-16 border-[3px] border-[#11111c] flex items-center justify-center shadow-[0_3px_0_rgba(0,0,0,0.5)]"
+              className="w-12 h-12 border-[3px] border-[#11111c] flex items-center justify-center shadow-[0_3px_0_rgba(0,0,0,0.5)]"
               style={{ background: '#ffc93c' }}
               animate={{ scale: isTouching ? 1.06 : 1 }}
               transition={{ type: 'spring', stiffness: 300, damping: 20 }}
             >
-              <div className="w-5 h-5 bg-[#11111c]/30 border border-[#11111c]/50" />
+              <div className="w-4 h-4 bg-[#11111c]/30 border border-[#11111c]/50" />
             </motion.div>
           </div>
         </div>
-        <p className="px-heading text-[9px] tracking-widest uppercase text-[#f4e7c3]">Move</p>
+        <p className="px-heading text-[9px] tracking-widest uppercase text-[#f4e7c3] short:hidden">Move</p>
       </div>
     </div>
   );
