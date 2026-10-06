@@ -4,7 +4,7 @@ import { characters } from '@/data/characters';
 import { audioManager } from '@/utils/audioManager';
 import { buzz } from '@/lib/haptics';
 import { cannedLine, type VoiceEvent } from './botVoice';
-import { PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, GAME_DURATION, checkCollision, findCollider, findSafeSpawnPosition } from './gameShared';
+import { PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, GAME_DURATION, ONLINE_GAME_DURATION, checkCollision, findCollider, findSafeSpawnPosition } from './gameShared';
 import { getGameSocket, getServerOffset } from '@/lib/socketBridge';
 import { TUNING, PERSONAS, PERSONA_SPEED, assignRoles, ramp, type BotTuning, type Role } from './botTactics';
 import type { Difficulty } from '@/store/gameStore';
@@ -25,7 +25,7 @@ const BOT_VOICE_EACH_MS = 7000;
  * How long a non-authority client waits on silence before steering the bots itself.
  *
  * The authority broadcasts ~30Hz, so 1.2s is ~36 missed packets — comfortably past a
- * network hiccup and well short of a 60s match, where a frozen opponent for even five
+ * network hiccup and well short of a match, where a frozen opponent for even five
  * seconds is the whole round.
  */
 const AGENT_TAKEOVER_MS = 1200;
@@ -65,8 +65,9 @@ const GRASS_FILL_KEY = 'grass_fill'; // standalone 16px grass texture for seamle
 // each player seeing a differently-sized map and a different random layout.
 // Arena is 25% smaller on each axis than the original 240×160 so players cross paths
 // faster and the egg changes hands more often.
-const MP_MAP_COLS = 180;
-const MP_MAP_ROWS = 120;
+// ~15% bigger than launch (180x120): more room to run with two-minute matches.
+const MP_MAP_COLS = 204;
+const MP_MAP_ROWS = 136;
 const SUMMER_SCENE_KEYS = [
   'summer_scene_1',
   'summer_scene_2',
@@ -208,6 +209,8 @@ export class GameScene extends Phaser.Scene {
   private gameStartTime = 0;
   private currentPhase: 'countdown' | 'playing' = 'countdown';
   private countdownTimer = 3;
+  /** Match length in seconds: 1 minute solo, 2 minutes online (the server's clock). */
+  private matchDuration = GAME_DURATION;
   private gameTimer = GAME_DURATION;
   /**
    * Wall-clock ms at which the 3s countdown began. Online it's the server's start time;
@@ -260,7 +263,7 @@ export class GameScene extends Phaser.Scene {
   private powerUpAuras: Record<string, Phaser.GameObjects.Arc> = {};
   /** Bot movement: detect stuck and recover. */
   private botStuckAccum: Record<string, { x: number; y: number; t: number }> = {};
-  /** Solo difficulty; online fill-bots always play 'normal'. */
+  /** Solo difficulty; online fill-bots always play 'easy'. */
   private difficulty: Difficulty = 'normal';
   /** Each bot's current role and the point it's heading for, refreshed at its reaction speed. */
   private botMind: Record<string, { role: Role; aim: { x: number; y: number } | null; aimAt: number }> = {};
@@ -306,7 +309,11 @@ export class GameScene extends Phaser.Scene {
     this.roomCode = data.roomCode || null;
     this.localUserId = useGameStore.getState().userId || undefined;
     this.isOnlineMp = this.gameMode === 'multiplayer' && !useGameStore.getState().multiplayerHiddenFill;
-    this.difficulty = this.gameMode === 'single-player' ? useGameStore.getState().difficulty : 'normal';
+    this.matchDuration = this.isOnlineMp ? ONLINE_GAME_DURATION : GAME_DURATION;
+    this.gameTimer = this.matchDuration;
+    // Online bots only fill empty seats, so they play Easy: the match is about the
+    // humans. (They used to play Normal, which with teamwork felt like a second team.)
+    this.difficulty = this.gameMode === 'single-player' ? useGameStore.getState().difficulty : 'easy';
     this.agentAuthority = this.computeAgentAuthority();
   }
 
@@ -395,14 +402,14 @@ export class GameScene extends Phaser.Scene {
     // started) instead of restarting at full time. Single-player always opens fresh.
     let startPhase: 'countdown' | 'playing' = 'countdown';
     let startCountdown = 3;
-    let startTimer = GAME_DURATION;
+    let startTimer = this.matchDuration;
     if (this.gameMode === 'multiplayer' && this.serverStartTime) {
       const elapsed = Math.floor((Date.now() + getServerOffset() - this.serverStartTime) / 1000);
       const afterCountdown = elapsed - 3; // 3s pre-game countdown
       if (afterCountdown >= 0) {
         startPhase = 'playing';
         startCountdown = 0;
-        startTimer = Math.max(1, GAME_DURATION - afterCountdown);
+        startTimer = Math.max(1, this.matchDuration - afterCountdown);
       } else {
         startCountdown = Math.max(1, 3 - Math.max(0, elapsed));
       }
@@ -428,10 +435,10 @@ export class GameScene extends Phaser.Scene {
     // single-player grows with the screen but stays a roomy clearing.
     const cols = this.gameMode === 'multiplayer'
       ? MP_MAP_COLS
-      : Math.max(150, Math.ceil(this.scale.width / TECH_TILE_SIZE) + 6);
+      : Math.max(170, Math.ceil(this.scale.width / TECH_TILE_SIZE) + 6);
     const rows = this.gameMode === 'multiplayer'
       ? MP_MAP_ROWS
-      : Math.max(98, Math.ceil(this.scale.height / TECH_TILE_SIZE) + 6);
+      : Math.max(110, Math.ceil(this.scale.height / TECH_TILE_SIZE) + 6);
     
     const borderThickness = 12;
     this.mapWidth = (cols - 2 * borderThickness) * TECH_TILE_SIZE;
@@ -583,7 +590,7 @@ export class GameScene extends Phaser.Scene {
       this.gameTimer = restored.gameTimer;
       // Resume with the same time left: pretend the countdown and the elapsed part of
       // the round happened just now.
-      this.clockStart = Date.now() - (3 + (GAME_DURATION - restored.gameTimer)) * 1000;
+      this.clockStart = Date.now() - (3 + (this.matchDuration - restored.gameTimer)) * 1000;
       this.currentPhase = 'playing';
       this.countdownTimer = 0;
       setCountdownTimer(0);
@@ -1094,6 +1101,29 @@ export class GameScene extends Phaser.Scene {
     for (let r = iR0; r < iR1; r += 3) {
       decal(rng() > 0.5 ? 'dirt_long' : 'dirt_big', cc + Math.round(rng() * 2 - 1), r, -9, 2, 0.95);
     }
+    // Sand trails: a few gently winding paths along the open lanes between the plots
+    // (the lanes start at border+ROAD/2 and repeat every PERIOD cells, see LAYER 3).
+    // Decals only, so they never block anyone; they just make the lanes read as routes.
+    {
+      const lane0 = borderThickness + 3, period = 13;
+      for (let r = lane0, i = 0; r < iR1 - 2; r += period, i++) {
+        if (i % 2 === 1) continue;                 // every other horizontal lane
+        const phase = rng() * Math.PI * 2;
+        for (let c = iC0 + 2; c < iC1 - 2; c += 3) {
+          const wob = Math.round(Math.sin(c * 0.18 + phase) * 1.2);
+          decal(rng() > 0.35 ? 'dirt_long' : 'dirt_big', c, r + wob, -9, 1.8, 0.85);
+        }
+      }
+      for (let c = lane0, i = 0; c < iC1 - 2; c += period, i++) {
+        if (i % 3 !== 1) continue;                 // every third vertical lane
+        const phase = rng() * Math.PI * 2;
+        for (let r = iR0 + 2; r < iR1 - 2; r += 3) {
+          const wob = Math.round(Math.sin(r * 0.22 + phase) * 1.2);
+          decal(rng() > 0.35 ? 'dirt_big' : 'dirt_small', c + wob, r, -9, rng() > 0.35 ? 1.8 : 2.4, 0.85);
+        }
+      }
+    }
+
     // Big open dirt clearing where players + egg spawn.
     decal('dirt_big', cc, cr, -9, 2.6, 1);
     decal('dirt_long', cc - 2, cr + 1, -9, 2, 0.95);
@@ -1142,12 +1172,37 @@ export class GameScene extends Phaser.Scene {
           if (!isOccupied(hc, hr, 3, 3)) { place('plateau', hc, hr); reserve(hc, hr, 3, 3); }
           if (!occupied.has(`${c},${r}`)) { place(treeType(), c, r); occupied.add(`${c},${r}`); }
         } else if (roll < 0.86) {
-          // Open dirt clearing dotted with flowers — a breather / sightline.
+          // Open dirt clearing dotted with flowers — a breather / sightline — with one
+          // tree off-centre to cut around.
           const mc = c + (PLOT >> 1), mr = r + (PLOT >> 1);
           decal(rng() > 0.5 ? 'dirt_big' : 'dirt_long', mc, mr, -9, 2, 0.95);
           decal('clover', mc, mr, -8, 1.6, 0.9);
+          const tc = c + 1 + ((rng() * 2) | 0), tr = r + PLOT - 2 - ((rng() * 2) | 0);
+          if (!occupied.has(`${tc},${tr}`)) { place(treeType(), tc, tr); occupied.add(`${tc},${tr}`); }
+        } else {
+          // Open courtyard for fast running, with a single obstacle (a tree or a pair of
+          // bushes) so it isn't completely bare.
+          const oc = c + 2 + ((rng() * (PLOT - 4)) | 0), or = r + 2 + ((rng() * (PLOT - 4)) | 0);
+          if (rng() > 0.5) {
+            if (!occupied.has(`${oc},${or}`)) { place(treeType(), oc, or); occupied.add(`${oc},${or}`); }
+          } else {
+            for (const [dc, dr] of [[0, 0], [1, 0]] as const) {
+              const bc = oc + dc, br = or + dr;
+              if (!occupied.has(`${bc},${br}`)) { place(bushType(), bc, br); occupied.add(`${bc},${br}`); }
+            }
+          }
         }
-        // else: fully open courtyard — left empty for fast running.
+      }
+    }
+
+    // A lone tree now and then at the edge of a lane, never in its middle: lanes are 6
+    // cells wide and stay at least 5 clear, so chases still flow.
+    for (let r = borderThickness + ROAD; r + PLOT <= rows - borderThickness; r += PERIOD) {
+      for (let c = borderThickness + ROAD; c + PLOT <= cols - borderThickness; c += PERIOD) {
+        if (Math.hypot(c + PLOT / 2 - cc, r + PLOT / 2 - cr) < plazaRadius + 4) continue;
+        if (rng() > 0.18) continue;
+        const lc = c - ROAD, lr = r + ((rng() * PLOT) | 0); // first column of the lane to the left
+        if (lc > borderThickness && !occupied.has(`${lc},${lr}`)) { place(treeType(), lc, lr); occupied.add(`${lc},${lr}`); }
       }
     }
 
@@ -2098,12 +2153,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Authority broadcasts the fill-agents' positions ~30Hz so other clients can render
-    // them. Cheap (≤3 bots, volatile) and only one client per room ever sends it.
+    // them. Cheap (≤3 bots) and only one client per room ever sends it.
     if (this.agentAuthority && now - this.lastAgentStateSend >= 33) {
       const bots = this.gsPlayers.filter((p) => p.isBot);
       if (bots.length > 0 && this.roomCode) {
         this.lastAgentStateSend = now;
-        socket.volatile.emit('agent-state', {
+        // Not volatile (see player-input below): sent in the same frame as this client's
+        // own position, a volatile pair dropped the second packet nearly every time.
+        if (socket.connected) socket.emit('agent-state', {
           roomCode: this.roomCode,
           // Who is steering. Lets a peer that also promoted itself work out which of the
           // two should stand down, with no extra round trip.
@@ -2116,6 +2173,10 @@ export class GameScene extends Phaser.Scene {
             hasEgg: !!b.hasEgg,
             isInvincible: !!b.isInvincible,
             left: this.facingLeft[b.id] === true,
+            // Velocity lets the other screens glide bots between packets instead of
+            // stepping them from one position to the next.
+            vx: Math.round(this.botVel[b.id]?.vx ?? 0),
+            vy: Math.round(this.botVel[b.id]?.vy ?? 0),
           })),
         });
       }
@@ -2147,10 +2208,13 @@ export class GameScene extends Phaser.Scene {
 
         if (moving || changed || keepalive) {
           this.lastSent = { x, y, vx, vy, hasEgg, isInvincible, t: now };
-          // volatile: a position packet is superseded by the next one, so if this
-          // socket's buffer is backed up (slow/stalled peer) drop it rather than
-          // queueing — prevents a rubber-band catch-up burst when it recovers.
-          socket.volatile.emit('player-input', {
+          // Sent only while connected (so nothing queues up across a disconnect), but
+          // not volatile. A volatile emit is dropped whenever the transport is still busy
+          // with the previous packet, and the client steering the bots sends agent-state
+          // in the same frame, so its own position was dropped almost every time: that
+          // player was frozen on everyone else's screen, and the server never saw them
+          // move (so their egg grabs were refused too).
+          if (socket.connected) socket.emit('player-input', {
             roomCode: this.roomCode,
             userId: this.localUserId,
             x,
@@ -2182,7 +2246,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * Match clock, read off the wall clock (see `clockStart`) so it runs at real speed at
    * any frame rate and, online, reads the same on every client.
-   * Layout: first 3s = countdown, then GAME_DURATION seconds of play.
+   * Layout: first 3s = countdown, then matchDuration seconds of play.
    */
   private advanceClock(store: ReturnType<typeof useGameStore.getState>) {
     // Online, re-derive from the server's start time each frame so a refined clock
@@ -2214,7 +2278,7 @@ export class GameScene extends Phaser.Scene {
       audioManager.play('go');
     }
 
-    const remaining = Math.max(0, Math.ceil(GAME_DURATION - (elapsed - 3)));
+    const remaining = Math.max(0, Math.ceil(this.matchDuration - (elapsed - 3)));
     if (remaining !== this.gameTimer) {
       this.gameTimer = remaining;
       store.setTimeRemaining(remaining);
@@ -2541,7 +2605,7 @@ export class GameScene extends Phaser.Scene {
     if (bots.length === 0) return;
 
     const tuning = TUNING[this.difficulty];
-    const progress = 1 - Math.max(0, Math.min(1, this.gameTimer / GAME_DURATION));
+    const progress = 1 - Math.max(0, Math.min(1, this.gameTimer / this.matchDuration));
     const speedRamp = ramp(tuning.speed, progress);
     const lead = ramp(tuning.lead, progress);
     const now = Date.now();
@@ -2589,7 +2653,11 @@ export class GameScene extends Phaser.Scene {
       if (bot.hasEgg) {
         this.fleeFrom(bot, speed);
       } else {
-        if (!mind.aim || now - mind.aimAt >= tuning.reactionMs) {
+        // Re-aim at the difficulty's reaction speed, or straight away once the bot has
+        // reached its last aim point: it used to stand there until the next re-read
+        // (up to 0.65s on Easy), which looked like bots stalling mid-chase.
+        const reached = mind.aim && Math.hypot(mind.aim.x - bot.x, mind.aim.y - bot.y) < 24;
+        if (!mind.aim || reached || now - mind.aimAt >= tuning.reactionMs) {
           mind.aim = this.aimFor(bot, mind.role, holder, eggPos, pxPerSec, lead);
           mind.aimAt = now;
         }
@@ -2910,13 +2978,23 @@ export class GameScene extends Phaser.Scene {
         }
       });
       if (sepCount > 0) {
-        // Blend target chase direction with separation push
-        const blendedX = ux * 1.0 + sepX * 1.8;
-        const blendedY = uy * 1.0 + sepY * 1.8;
-        const blendedMag = Math.hypot(blendedX, blendedY);
-        if (blendedMag > 0) {
-          ux = blendedX / blendedMag;
-          uy = blendedY / blendedMag;
+        // Blend the chase direction with a push away from nearby bots, but never let the
+        // push win: at 1.8x it could point a bot sideways or backwards, so two bots
+        // chasing the same thing slowed to a crawl or stalled. Keep at least ~70% of
+        // the movement going toward the target.
+        let bx = ux + sepX * 0.9;
+        let by = uy + sepY * 0.9;
+        let bm = Math.hypot(bx, by);
+        if (bm > 0) {
+          bx /= bm; by /= bm;
+          if (bx * ux + by * uy < 0.7) {
+            bx = ux * 0.75 + bx * 0.25;
+            by = uy * 0.75 + by * 0.25;
+            bm = Math.hypot(bx, by) || 1;
+            bx /= bm; by /= bm;
+          }
+          ux = bx;
+          uy = by;
         }
       }
 
@@ -2930,7 +3008,11 @@ export class GameScene extends Phaser.Scene {
       this.botHeadX[player.id] = hx;
       this.faceToward(player.id, hx);
     }
-    const actualSpeed = Math.max(speed, player.isBot ? 5.5 : 0);
+    // No per-frame minimum. It used to be 5.5px a frame, which on a 120Hz or 144Hz screen
+    // (where a frame's share of the speed is smaller) lifted every bot to the same
+    // 660-790px/s, faster than Doux, whatever dino it was, and cancelled Earthquake's
+    // slow. Bots now move at exactly their dino's speed on any screen.
+    const actualSpeed = speed;
     const nx = player.x + ux * actualSpeed;
     const ny = player.y + uy * actualSpeed;
 

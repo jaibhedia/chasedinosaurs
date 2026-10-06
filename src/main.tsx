@@ -4,9 +4,11 @@ import '@fontsource/press-start-2p/400.css';
 import '@fontsource/vt323/400.css';
 import App from './App';
 import { captureInstallPrompt } from './lib/platform';
+import { initAutoFullscreen } from './lib/fullscreen';
 import './index.css';
 
 captureInstallPrompt();
+initAutoFullscreen();
 
 // No React.StrictMode — Strict Mode's double-mount causes Phaser's WebGL
 // context to throw "Framebuffer Incomplete Attachment" when the first mount

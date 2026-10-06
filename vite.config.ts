@@ -17,7 +17,7 @@ export default defineConfig({
         id: '/',
         name: 'Chase Dinosaurs',
         short_name: 'Chase',
-        description: 'Grab the egg and survive the chase. A 60-second chase game, solo against bots or with friends.',
+        description: 'Grab the egg and survive the chase. A fast chase game, solo against bots or with friends.',
         start_url: '/',
         scope: '/',
         display: 'fullscreen',

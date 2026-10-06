@@ -18,7 +18,11 @@ const COUNTDOWN_DURATION = 3;
  * Single source of truth — the server derives remaining time from its own start
  * timestamp and this constant, so there is no second number to keep in step.
  */
+/** Solo match length (s). */
 const GAME_DURATION = 60;
+/** Online match length (s): longer, because a room of humans takes longer to play out.
+ *  Must match MATCH_SECONDS in server/src/match.ts. */
+const ONLINE_GAME_DURATION = 120;
 const TAG_COOLDOWN = 1200;
 
 let isGameInitialized = false;
@@ -185,5 +189,5 @@ function createMapObjects(mapId: string, width: number, height: number): GameObj
   return objects;
 }
 
-export { sharedState, PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, COUNTDOWN_DURATION, GAME_DURATION, checkCollision, findCollider, createMapObjects, findSafeSpawnPosition };
+export { sharedState, PLAYER_SIZE, TAG_DISTANCE, TAG_COOLDOWN, COUNTDOWN_DURATION, GAME_DURATION, ONLINE_GAME_DURATION, checkCollision, findCollider, createMapObjects, findSafeSpawnPosition };
 export type { SharedState };

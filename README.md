@@ -1,6 +1,6 @@
 # Chase Dinosaurs
 
-A fast 60-second chase game. There is one golden egg. Whoever holds it is the target and
+A fast chase game (1-minute solo rounds, 2-minute online matches). There is one golden egg. Whoever holds it is the target and
 everyone else hunts them. Whoever is holding it when the timer hits zero wins.
 
 - **Solo** against three bots on Easy, Normal or Hard. Works offline.
