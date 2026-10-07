@@ -3,6 +3,7 @@ import { Flag, Headphones, Mic, MicOff, PhoneOff, Users, Volume2, VolumeX } from
 import { useSocket } from '@/providers/SocketProvider';
 import { useGameStore } from '@/store/gameStore';
 import { ProximityVoice } from '@/lib/voiceChat';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 
 /**
  * Opt-in proximity voice chat control. Available only in multiplayer rooms.
@@ -10,6 +11,7 @@ import { ProximityVoice } from '@/lib/voiceChat';
  * players come through loud and distant ones fade out (see ProximityVoice).
  */
 export default function VoiceChat() {
+  const touch = useIsTouchDevice();
   const { socket, connectionStatus } = useSocket();
   const gameMode = useGameStore((s) => s.gameMode);
   const roomCode = useGameStore((s) => s.roomCode);
@@ -106,8 +108,13 @@ export default function VoiceChat() {
 
   return (
     <div
-      className="pointer-events-auto fixed top-16 z-[58] flex flex-col items-end gap-1.5 sm:top-20 sm:gap-2"
-      style={{ right: 'calc(env(safe-area-inset-right, 0px) + 0.5rem)' }}
+      className={`pointer-events-auto fixed z-[58] flex flex-col items-end gap-1.5 sm:gap-2 ${touch ? '' : 'top-16 sm:top-20'}`}
+      // On phones the minimap sits top right next to the menu button; start below both
+      // with a clear gap (it used to butt up against the minimap on a 6" screen).
+      style={{
+        right: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)',
+        ...(touch ? { top: 'calc(env(safe-area-inset-top, 0px) + 6.5rem)' } : {}),
+      }}
     >
       {!active ? (
         <button

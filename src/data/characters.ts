@@ -22,9 +22,9 @@ export const characters: Character[] = [
     color: '#8AA8FF',
     spriteId: 'mort',
     powerUp: {
-      name: 'Earthquake',
-      description: 'Shake and crack the ground, causing chasers to lose momentum',
-      duration: 500, // Shake duration, slow effect lasts longer (e.g. 3000ms)
+      name: 'Quick Blast',
+      description: 'A shockwave that knocks nearby dinos back and stuns them for a moment',
+      duration: 500, // the blast itself; the knockback and stun are set in gameScene (BLAST_*)
       cooldown: 5000,
       type: 'earthquake'
     }

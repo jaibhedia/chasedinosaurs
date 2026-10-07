@@ -59,7 +59,7 @@ export function Minimap({ isMobile = false }: { isMobile?: boolean }) {
   // panel made Chromium's software renderer skip a mirrored patch of the canvas, a black
   // or white box at the top right of the game. Not-quite-opaque layers don't hide anything.
   const wrapStyle = isMobile
-    ? { right: 'calc(env(safe-area-inset-right, 0px) + 4.75rem)', opacity: 0.99 }
+    ? { right: 'calc(env(safe-area-inset-right, 0px) + 5.5rem)', opacity: 0.99 }
     : { opacity: 0.99 };
 
   return (

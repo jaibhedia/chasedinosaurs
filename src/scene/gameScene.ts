@@ -24,13 +24,18 @@ const BOT_VOICE_EACH_MS = 7000;
 /**
  * How long a non-authority client waits on silence before steering the bots itself.
  *
- * The authority broadcasts ~30Hz, so 1.2s is ~36 missed packets — comfortably past a
- * network hiccup and well short of a match, where a frozen opponent for even five
- * seconds is the whole round.
+ * The authority broadcasts ~30Hz, so 0.9s is ~27 missed packets, past a normal network
+ * hiccup. This is only the backstop: when the steering player leaves or drops, the
+ * server says so and the next in line takes over at once (onPeerGone).
  */
-const AGENT_TAKEOVER_MS = 1200;
+const AGENT_TAKEOVER_MS = 900;
 /** Extra wait per rank, so the room fails over in order instead of all at once. */
-const AGENT_TAKEOVER_STAGGER_MS = 1200;
+const AGENT_TAKEOVER_STAGGER_MS = 900;
+/** Quick Blast (Mort): reach, the knockback's starting speed and length, and the stun after. */
+const BLAST_RADIUS = 260;
+const BLAST_PUSH = 1100;
+const BLAST_KNOCK_MS = 320;
+const BLAST_STUN_MS = 1200;
 /** How long an overhead taunt bubble stays up after it arrives. */
 const TAUNT_TTL_MS = 4000;
 /** First power-up unlocks 15s into the match (matches the base reload cadence). */
@@ -163,6 +168,14 @@ export class GameScene extends Phaser.Scene {
    *  no fighting over bot movement. Non-authority clients render them off the network. */
   private agentAuthority = false;
   private onAgentState?: (payload: any) => void;
+  /** A peer left or dropped: if it was steering the bots, the next in line takes over now. */
+  private onPeerGone?: (payload: any) => void;
+  /** Who we last heard steering the bots (agent-state `from`). */
+  private lastAgentFrom = '';
+  /** Quick Blast knockback in progress, per player: push velocity (px/s) and time left. */
+  private knock: Record<string, { vx: number; vy: number; ms: number }> = {};
+  /** Whether each shield went up while its owner already held the egg (see updatePowerUps). */
+  private shieldWithEgg: Record<string, boolean> = {};
   private lastAgentStateSend = 0;
   /**
    * When we last heard the authority broadcast agent positions.
@@ -425,6 +438,9 @@ export class GameScene extends Phaser.Scene {
     this.botStuckAccum = {};
     this.lastAgentStateAt = 0;
     this.lastFrameAt = 0;
+    this.lastAgentFrom = '';
+    this.knock = {};
+    this.shieldWithEgg = {};
     this.tagBackBlock = null;
     this.lastTagTime = 0;
 
@@ -782,6 +798,7 @@ export class GameScene extends Phaser.Scene {
         this.tryQueuedPower();
         this.updateMovement(dt);
         this.updateBots(dt);
+        this.applyKnockbacks(dt);
         this.updateTagging();
         // Real elapsed time (capped), not the sim step: the sim step is clamped to 1/30s,
         // so on a phone below 30fps cooldowns ran slower than the match clock and the
@@ -837,7 +854,9 @@ export class GameScene extends Phaser.Scene {
       }
       spr.setFlipX(this.facingLeft[p.id] === true);
 
-      if (moving && !p.isInvincible) {
+      // Shielded dinos keep running: they used to switch to the idle animation, so a
+      // shielded dino slid across the map standing still, as if floating in its bubble.
+      if (moving) {
         spr.play(`run_${sid}_anim`, true);
       } else {
         spr.play(`idle_${sid}_anim`, true);
@@ -886,8 +905,8 @@ export class GameScene extends Phaser.Scene {
       const bob = moving ? Math.sin(this.time.now * 0.012) * 1.5 : 0;
       spr.y = -12 + bob;
 
-      // Shielded dinos go see-through, not invisible, so you can still track them.
-      sprite.setAlpha(p.isInvincible ? 0.5 : 1);
+      // Shielded dinos dim a little; the green bubble around them says the rest.
+      sprite.setAlpha(p.isInvincible ? 0.85 : 1);
     });
 
     this.cullProps();
@@ -2134,7 +2153,7 @@ export class GameScene extends Phaser.Scene {
       // After a reconnect, resync the egg rather than trusting what we last saw.
       this.onRoomRejoined = (payload: any) => { if (payload?.egg) this.applyEggOwner(payload.egg); };
       socket.on('room-rejoined', this.onRoomRejoined);
-      // Someone else's power: show it, and feel it if it's an earthquake near us.
+      // Someone else's power: show it, and feel it if it's a Quick Blast near us.
       this.onPowerUsed = (payload: any) => this.applyRemotePower(payload);
       socket.on('power-used', this.onPowerUsed);
       // A bot's line, chosen by the bot-steering client.
@@ -2152,6 +2171,7 @@ export class GameScene extends Phaser.Scene {
         // our own failover timer. Real time, not the game clock: the game clock stops
         // while our tab is frozen, and packets still arrive then.
         this.lastAgentStateAt = performance.now();
+        if (payload.from != null) this.lastAgentFrom = String(payload.from);
 
         if (this.agentAuthority) {
           // Two clients steering at once — possible for a moment after a failover, or if
@@ -2186,6 +2206,27 @@ export class GameScene extends Phaser.Scene {
         }
       };
       socket.on('agent-state', this.onAgentState);
+      // The server says who left (leave-room) or dropped (socket closed) the moment it
+      // happens. If that was the client steering the bots, the next in line takes over
+      // straight away instead of waiting out the silence timer, which froze the bots for
+      // a second or more on every handover.
+      this.onPeerGone = (payload: any) => {
+        const gone = String(payload?.userId ?? '');
+        if (!gone || this.agentAuthority || gone !== this.lastAgentFrom) return;
+        if (this.currentPhase !== 'playing' || !this.gsPlayers.some((p) => p.isBot)) return;
+        const list: any[] = Array.isArray(payload.players) ? payload.players : [];
+        const next = list
+          .filter((p) => p && p.connected !== false && String(p.user_id) !== gone)
+          .map((p) => String(p.user_id))
+          .sort()[0];
+        if (next !== String(this.localUserId)) return;
+        this.agentAuthority = true;
+        this.lastAgentStateAt = performance.now();
+        this.adoptBots();
+        console.info('[agents] bot-steering player left — taking over now');
+      };
+      socket.on('player-left', this.onPeerGone);
+      socket.on('player-disconnected', this.onPeerGone);
       this.events.once('shutdown', () => {
         if (this.onRemoteInput) socket.off('player-input', this.onRemoteInput);
         if (this.onEggOwner) socket.off('egg-owner', this.onEggOwner);
@@ -2194,6 +2235,10 @@ export class GameScene extends Phaser.Scene {
         if (this.onPowerUsed) socket.off('power-used', this.onPowerUsed);
         if (this.onBotSaid) socket.off('bot-said', this.onBotSaid);
         if (this.onAgentState) socket.off('agent-state', this.onAgentState);
+        if (this.onPeerGone) {
+          socket.off('player-left', this.onPeerGone);
+          socket.off('player-disconnected', this.onPeerGone);
+        }
         this.onRemoteInput = undefined;
         this.onEggOwner = undefined;
         this.onMatchResult = undefined;
@@ -2878,7 +2923,7 @@ export class GameScene extends Phaser.Scene {
       (type === 'speed-boost' && d < 280 && d > 60) ||
       (type === 'earthquake' && d < 220) ||
       (type === 'teleport' && d > 450);
-    // A shield on a chaser only stops it from tagging, so it's never worth it.
+    // A shield on a chaser just pops when it grabs the egg, so bots save it for defence.
     if (use) this.activatePowerUp(bot);
   }
 
@@ -3063,7 +3108,7 @@ export class GameScene extends Phaser.Scene {
     }
     // No per-frame minimum. It used to be 5.5px a frame, which on a 120Hz or 144Hz screen
     // (where a frame's share of the speed is smaller) lifted every bot to the same
-    // 660-790px/s, faster than Doux, whatever dino it was, and cancelled Earthquake's
+    // 660-790px/s, faster than Doux, whatever dino it was, and cancelled Quick Blast's
     // slow. Bots now move at exactly their dino's speed on any screen.
     const actualSpeed = speed;
     const nx = player.x + ux * actualSpeed;
@@ -3131,7 +3176,7 @@ export class GameScene extends Phaser.Scene {
     const canSteal = now >= this.eggGraceUntil && now - this.lastTagTime >= TAG_COOLDOWN;
 
     const tryClaim = (p: Player) => {
-      if (p.isInvincible || p.hasEgg) return;
+      if (p.hasEgg) return;
       if (eggPos) {
         if (Math.hypot(p.x - eggPos.x, p.y - eggPos.y) <= tagDist) this.claimEgg(p.id === 'player' ? this.localUserId : p.userId);
         return;
@@ -3160,7 +3205,6 @@ export class GameScene extends Phaser.Scene {
       const eggPos = store.eggPosition;
       if (eggPos) {
         for (const p of this.gsPlayers) {
-          if (p.isInvincible) continue;
           if (Math.hypot(p.x - eggPos.x, p.y - eggPos.y) <= effectiveTagDistance) {
             p.hasEgg = true;
             p.eggHoldCount = (p.eggHoldCount || 0) + 1;
@@ -3190,7 +3234,7 @@ export class GameScene extends Phaser.Scene {
     if (!holder) return;
     // If the holder has an active invincibility shield, nobody can touch them
     if (holder.isInvincible) return;
-    const others = this.gsPlayers.filter((p) => !p.hasEgg && !p.isInvincible);
+    const others = this.gsPlayers.filter((p) => !p.hasEgg);
 
     for (const target of others) {
       // Same-frame retake protection: previous holder can't instantly snatch back.
@@ -3278,12 +3322,12 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private attachPowerAura(playerId: string, color: number) {
+  private attachPowerAura(playerId: string, color: number, radius = 28) {
     this.removePowerAura(playerId);
     const sprite = this.playerSprites[playerId];
     if (!sprite) return;
     const aura = this.add
-      .circle(0, -12, 28, color, 0.22)
+      .circle(0, -12, radius, color, 0.22)
       .setStrokeStyle(3, color, 0.85);
     sprite.addAt(aura, 1);
     this.tweens.add({
@@ -3377,6 +3421,10 @@ export class GameScene extends Phaser.Scene {
       if (p.powerUpActive) {
         p.powerUpActiveMs = (p.powerUpActiveMs ?? 0) - deltaMs;
         if (p.powerUpActiveMs <= 0) this.deactivatePowerUp(p);
+        // A shield doesn't stop you grabbing the egg, but grabbing it pops the shield:
+        // otherwise a shielded chaser would take the egg and then be untouchable too.
+        // A shield raised while already holding the egg runs its full time.
+        else if (p.isInvincible && p.hasEgg && !this.shieldWithEgg[p.id]) this.deactivatePowerUp(p);
       }
 
       // Keep initial power-up lock until global unlock time.
@@ -3511,17 +3559,8 @@ export class GameScene extends Phaser.Scene {
         // Deactivation handled by updatePowerUps (dt-based) — see deactivatePowerUp.
         break;
       case 'earthquake':
-        this.cameras.main.shake(pu.duration, 0.005);
-        this.spawnPulse(player.x, player.y, 0xf97316, 40, 180, 0.5, pu.duration);
-        this.spawnSparkBurst(player.x, player.y, 0xf97316, 24, 160, 420);
-        this.gsPlayers.forEach(o => {
-          if (o.id !== player.id && Math.hypot(o.x - player.x, o.y - player.y) < 250) {
-            const slowUntil = Date.now() + 3000;
-            o.slowedUntil = slowUntil;
-            store.updatePlayer(o.id, { slowedUntil: slowUntil });
-            this.spawnSparkBurst(o.x, o.y, 0xf97316, 10, 80, 300);
-          }
-        });
+        // Quick Blast (the type keeps its old name on the wire and in the server).
+        this.quickBlast(player.x, player.y, player.id);
         // Deactivation handled by updatePowerUps (dt-based).
         break;
       case 'teleport': {
@@ -3574,37 +3613,16 @@ export class GameScene extends Phaser.Scene {
         break;
       }
       case 'shield':
-        this.attachPowerAura(player.id, 0x22c55e);
+        // One bubble, inside the dino's own container so it moves with the sprite. There
+        // used to be a second glow placed at the player's simulated position by a 16ms
+        // timer: it trailed behind the drawn dino, at a different height, and looked
+        // like the dino floating loose inside it.
+        this.attachPowerAura(player.id, 0x22c55e, 36);
         this.spawnPulse(player.x, player.y, 0x22c55e, 28, 118, 0.6, 400);
         player.isInvincible = true;
+        this.shieldWithEgg[player.id] = !!player.hasEgg;
         store.updatePlayer(player.id, { isInvincible: true });
-        
-        const shieldGlow = this.add.circle(player.x, player.y, 30, 0x22c55e, 0.4);
-        shieldGlow.setStrokeStyle(3, 0x4ade80, 0.8);
-        this.tweens.add({
-          targets: shieldGlow,
-          scale: 1.2,
-          alpha: 0.2,
-          duration: 400,
-          yoyo: true,
-          repeat: -1
-        });
-        
-        const updateShieldPos = this.time.addEvent({
-          delay: 16,
-          repeat: -1,
-          callback: () => {
-            if (!player.isInvincible) {
-              shieldGlow.destroy();
-              updateShieldPos.remove(false);
-            } else {
-              shieldGlow.x = player.x;
-              shieldGlow.y = player.y;
-            }
-          }
-        });
-        // Deactivation (clears isInvincible → the glow above self-destroys) is handled
-        // by updatePowerUps (dt-based).
+        // Deactivation (clears isInvincible and the bubble) is handled by updatePowerUps.
         break;
     }
   }
@@ -3644,7 +3662,7 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Another client's power. Effects on a player are applied by that player's own client
-   * (it owns its movement), so an earthquake slows us here if we're in range, and the
+   * (it owns its movement), so a Quick Blast knocks us back here if we're in range, and the
    * bot-steering client slows its bots. Everyone sees the burst.
    */
   private applyRemotePower(payload: any) {
@@ -3659,28 +3677,79 @@ export class GameScene extends Phaser.Scene {
     if (src) {
       this.spawnPowerLabel(src, src.character.powerUp.name.toUpperCase(), '#dbeafe');
       if (payload.type === 'speed-boost' || payload.type === 'shield' || payload.type === 'teleport') {
-        this.attachPowerAura(src.id, color);
+        this.attachPowerAura(src.id, color, payload.type === 'shield' ? 36 : 28);
         const ms = payload.type === 'teleport' ? 650 : src.character.powerUp.duration;
         this.time.delayedCall(ms, () => this.removePowerAura(src.id));
       }
     }
     if (payload.type !== 'earthquake') return;
-    this.spawnPulse(x, y, 0xf97316, 40, 180, 0.5, 500);
-    const until = Date.now() + 3000;
+    this.quickBlast(x, y, src?.id ?? null);
+  }
+
+  /**
+   * Quick Blast (Mort's power; "earthquake" on the wire). A shockwave from (x, y): every
+   * dino in range is knocked back and stunned for a moment, and the screen shakes for
+   * anyone close enough to feel it. It used to be a long faint shake and a 3-second
+   * slow, which didn't read as anything happening.
+   *
+   * Each client applies the knockback only to the dinos it moves (its own, and the bots
+   * if it steers them); everyone else's own client does the same for theirs, since every
+   * client runs this for every blast (locally for its own, via power-used for others').
+   */
+  private quickBlast(x: number, y: number, sourceId: string | null) {
+    this.spawnPulse(x, y, 0xffffff, 18, BLAST_RADIUS * 0.75, 0.55, 260);
+    this.spawnPulse(x, y, 0xf97316, 30, BLAST_RADIUS, 0.6, 380);
+    this.spawnSparkBurst(x, y, 0xf97316, 28, BLAST_RADIUS * 0.8, 420);
     const store = useGameStore.getState();
-    const hit = (p: Player) => {
-      if (p.userId === payload.userId || Math.hypot(p.x - x, p.y - y) >= 250) return;
-      p.slowedUntil = until;
-      store.updatePlayer(p.id, { slowedUntil: until });
-      this.spawnSparkBurst(p.x, p.y, 0xf97316, 10, 80, 300);
-    };
+    const now = Date.now();
     const me = this.gsPlayers.find((p) => p.id === 'player');
-    if (me) {
-      const wasSlowed = (me.slowedUntil ?? 0) > Date.now();
-      hit(me);
-      if (!wasSlowed && (me.slowedUntil ?? 0) > Date.now()) this.cameras.main.shake(400, 0.005);
+    let meHit = false;
+    for (const p of this.gsPlayers) {
+      if (p.id === sourceId) continue;
+      const mine = p.id === 'player' || (p.isBot && this.agentAuthority);
+      if (!mine) continue;
+      const dx = p.x - x;
+      const dy = p.y - y;
+      const d = Math.hypot(dx, dy);
+      if (d >= BLAST_RADIUS) continue;
+      // Straight away from the blast, harder up close; a dino standing on the centre
+      // goes a random way.
+      const ang = d > 1 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
+      const power = BLAST_PUSH * (0.55 + 0.45 * (1 - d / BLAST_RADIUS));
+      this.knock[p.id] = { vx: Math.cos(ang) * power, vy: Math.sin(ang) * power, ms: BLAST_KNOCK_MS };
+      p.slowedUntil = now + BLAST_STUN_MS;
+      store.updatePlayer(p.id, { slowedUntil: p.slowedUntil });
+      this.spawnSparkBurst(p.x, p.y, 0xf97316, 10, 80, 300);
+      if (p.id === 'player') {
+        meHit = true;
+        // Don't fight the push with the run speed you had.
+        const v = this.playerVelocity['player'];
+        if (v) { v.vx = 0; v.vy = 0; }
+      }
     }
-    if (this.agentAuthority) for (const b of this.gsPlayers) if (b.isBot) hit(b);
+    // Shake for the one who blasted, anyone hit, and a lighter one for anyone watching nearby.
+    const near = me ? Math.hypot(me.x - x, me.y - y) : Infinity;
+    if (sourceId === 'player' || meHit) {
+      this.cameras.main.shake(meHit ? 340 : 280, meHit ? 0.016 : 0.012);
+      buzz('heavy');
+    } else if (near < 700) {
+      this.cameras.main.shake(200, 0.006);
+    }
+  }
+
+  /** Slide knocked-back dinos along their push, slowing to a stop, without going through walls. */
+  private applyKnockbacks(dt: number) {
+    for (const id of Object.keys(this.knock)) {
+      const k = this.knock[id];
+      const p = this.gsPlayers.find((q) => q.id === id);
+      k.ms -= dt * 1000;
+      if (!p || k.ms <= 0) { delete this.knock[id]; continue; }
+      const f = k.ms / BLAST_KNOCK_MS;
+      const sx = k.vx * f * dt;
+      const sy = k.vy * f * dt;
+      if (!this.getCollidingObject(p.x + sx, p.y, PLAYER_SIZE)) p.x += sx;
+      if (!this.getCollidingObject(p.x, p.y + sy, PLAYER_SIZE)) p.y += sy;
+    }
   }
 
   private endGame(result?: { winnerUserId: string | null; stats?: Array<{ userId: string; grabs: number; heldMs: number }> }) {

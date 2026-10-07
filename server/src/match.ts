@@ -83,7 +83,9 @@ export class Match {
     if (this.ended || now < this.playAt || now > this.endAt) return null;
     if (!claimer || claimer === this.holder) return null;
     const me = this.positions.get(claimer);
-    if (!me || now - me.t > STALE_MS || me.invincible) return null;
+    // A shield only protects the holder; it doesn't stop its owner grabbing the egg
+    // (their client drops the shield when they do).
+    if (!me || now - me.t > STALE_MS) return null;
     const reach = TAG_REACH + LATENCY_SLACK;
 
     if (this.holder === null) {

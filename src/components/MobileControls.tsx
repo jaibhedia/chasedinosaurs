@@ -122,7 +122,7 @@ export default function MobileControls({
           activeDuration={activeDuration}
           onPress={pressPower}
           onRelease={releasePower}
-          size={54}
+          size={60}
         />
       </div>
 

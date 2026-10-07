@@ -1,4 +1,4 @@
-package xyz.chasedinosaurs.app;
+package fun.chasedinosaurs.app;
 
 import com.getcapacitor.BridgeActivity;
 
