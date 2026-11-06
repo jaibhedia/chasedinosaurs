@@ -47,8 +47,16 @@ services:
         sync: false
 
       # --- All-time leaderboard ------------------------------------------------
-      # Folder for leaderboard.json (default: ./data). The free plan's disk is wiped on
-      # every restart and deploy; attach a persistent disk and set this to its mount path.
+      # Kept in Upstash Redis when both of these are set (free tier at upstash.com: create a
+      # Redis database, then copy its REST URL and token). /health shows
+      # leaderboard.store = "upstash" once they're picked up.
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      # SECRET.
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      # Without Upstash: the folder for leaderboard.json (default: ./data). The free plan wipes
+      # it on every restart, deploy and idle sleep; it only lasts on a paid plan's persistent disk.
       - key: DATA_DIR
         sync: false
 
