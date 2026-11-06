@@ -1,6 +1,6 @@
 # Chase Dinosaurs · ETHGlobal Mumbai 2026 · PRD
 
-> A living document, updated after every feature push. Last update: 2026-11-06 23:25 IST at `de5bae2` (F7 to F10 in PR #7, the final PR).
+> A living document, updated after every feature push. Last update: 2026-11-07 02:55 IST at `9059eca` (PR #7 merged; the overlap fix in PR #8).
 > Plan and build log: [PLAN.md](PLAN.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md)
 
 ## 1. Summary
@@ -52,7 +52,7 @@ Status: Planned → Building → Shipped, or Cut (with the reason in §9).
 | ID | Feature | User value | Acceptance criteria | Criteria served | Partner | Demo beat | Status | Shipped in |
 |---|---|---|---|---|---|---|---|---|
 | F1 | Admin-only spectator mode | Organisers put any live match on a big screen | Sign-in at `/admin` needs an allowlisted email (`ADMIN_EMAILS`) and the passcode (`ADMIN_PASSCODE`), and everyone else is refused. Admins see the live rooms and can watch one, even mid-match. The spectator takes no seat, has no dino, and can't claim the egg or steer bots. The camera follows the egg or a chosen player, and the live board shows. | Tech, UX, WOW | — | A match on the projector, camera tracking the egg | Shipped | `98352cf`, `532d8f1`, `a360b12` |
-| F2 | Points and live match leaderboard | Every second with the egg counts, not just the last one | Holding the egg scores 1 point a second. A steal (taking it from another player, not the first pickup) scores 5, and the winner gets 30. The in-match board updates within 1 s for every player, solo and online, bots included. Online numbers come from the server. The results screen shows points with the breakdown. | Tech, Pract, UX | — | The board reshuffling live after a steal | Shipped | `5ae683a`, `ee51eb0` |
+| F2 | Points and live match leaderboard | Every second with the egg counts, not just the last one | Holding the egg scores 1 point a second. A steal (taking it from another player, not the first pickup) scores 5, and the winner gets 30. The in-match board updates within 1 s for every player, solo and online, bots included. Online numbers come from the server. The results screen shows points with the breakdown. | Tech, Pract, UX | — | The board reshuffling live after a steal | Shipped | `5ae683a`, `ee51eb0`, fix `9059eca` |
 | F3 | All-time leaderboard | A reason to come back and beat a best | Three tabs: Longest egg hold and Most steals (each player's best single match, not a sum) and Wins. Online, server-verified matches only, with humans only. It survives deploys, restarts and idle sleeps (saved to Upstash Redis). | Pract, WOW | — | Three tabs, your name highlighted | Shipped | `6f37c94`, `17be8bb`, `ee10c4a` |
 | F4 | Xbox controller on PC | Play at the booth from a couch | The left stick or D-pad moves (analog). A, RB or RT fires the power, Start opens the menu and B closes it. Works with any standard-mapping pad in Chrome, Edge or Firefox, plugged in at any time. | UX | — | Playing with a pad | Shipped | `ec97817` |
 | F5 | Stick on either side (phones) | Left-handed players aren't stuck | The stick goes left or right and the power button takes the other side. The choice is set in the in-game menu and remembered on the device. | UX | — | Flip it mid-match | Shipped | `4631219` |
@@ -128,3 +128,5 @@ swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive
 - 2026-11-06 22:15 IST · F7 (World ID) and F8 (0G Compute receipts) added and built (P6). Arc not started.
 - 2026-11-06 23:25 IST · F9 (player names) and F10 (controller navigation in menus) added and
   built as the last features (P8). PR #7 is the final PR.
+- 2026-11-07 02:55 IST · PR #7 merged (01:43). Fix: on desktop the voice button covered F2's
+  live board online (P11); PR #8.

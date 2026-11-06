@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 5h 35m to freeze, 9h 35m to the deadline (2026-11-06 23:25 IST)
+> ⏱ Time left at last update: 2h 05m to freeze, 6h 05m to the deadline (2026-11-07 02:55 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: de5bae2 -->
+<!-- last-logged: 9059eca -->
 
 ## Eligibility gates
 
@@ -45,9 +45,10 @@ view, because the spectator shows the live board.
 ## Event go-live (today)
 
 - [x] Merge PR #6 with a merge commit (20:36 IST, `5355089`).
-- [ ] Merge [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7), the final PR (F7 World
-  ID, F8 0G receipts, F9 names, F10 controller menus), with a **merge commit**. Vercel deploys
-  the web app and Render the server.
+- [x] Merge [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7) (F7 World ID, F8 0G
+  receipts, F9 names, F10 controller menus) with a merge commit (2026-11-07 01:43 IST,
+  `3e045e6`). Vercel and Render picked it up within minutes.
+- [ ] Merge PR #8 (the voice button over the points board) with a **merge commit**.
 - [ ] Render env: `ADMIN_EMAILS` (comma-separated) and `ADMIN_PASSCODE`. Without the emails
   nobody can spectate.
 - [ ] Leaderboard storage (free): at upstash.com create a Redis database, copy its REST URL and
@@ -435,6 +436,19 @@ One entry per push, oldest first, written by the post-push routine.
   shut the pad leaves the page alone. F6's 25 checks and the phone touch test still pass.
 - **Known issues:** tried with a simulated pad, not yet a physical one. A text field needs a
   keyboard; A only focuses it.
+
+### F2 fix · The voice button no longer covers the points board · Shipped · 2026-11-07 02:55 IST
+- **Commits:** `9059eca` (1) · PR #8
+- **Files:** `src/components/GameHUD.tsx` · +8/−4
+- **AI:** Claude Code (Opus 5.5) found the cause and fixed it. **Human:** Shantanu spotted it on
+  the live site and sent a screenshot (P11).
+- **Challenge:** two components pinned to the same corner. Online on desktop, VoiceChat's control
+  sat 5rem from the top and F2's board 4.75rem, both 0.75rem from the right edge. The board now
+  starts at 8.5rem when the voice control shows (same conditions as VoiceChat); solo and
+  spectating keep 4.75rem.
+- **Verified:** measured in live two-player matches at 1280×720 and 1440×900. The voice button
+  spans 80–126 px from the top and the board starts at 136 px, with the menu button clear. Solo
+  has no voice button and the board stays under the menu. No page errors.
 
 ## Submission checklist
 
