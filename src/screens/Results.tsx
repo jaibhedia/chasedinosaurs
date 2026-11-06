@@ -20,6 +20,8 @@ export default function Results() {
   const { winner, gameMessage, players, gameMode, resetMatch, setRoomCode, quickPlay } = useGameStore();
   const { leaveRoom, socket } = useSocket();
   const [roast, setRoast] = useState<string | null>(null);
+  // Set when the roast ran on the 0G Compute Router: which request served it.
+  const [roastReceipt, setRoastReceipt] = useState<string | null>(null);
   const [shareState, setShareState] = useState<'idle' | 'busy' | 'saved' | 'failed'>('idle');
   const playedSound = useRef(false);
   const playerWon = winner?.id === 'player';
@@ -50,10 +52,12 @@ export default function Results() {
     const fallback = () => setRoast((r) => r ?? cannedRoast(rows, winnerName));
     if (!socket?.connected) { fallback(); return; }
     const timer = setTimeout(fallback, 1600);
-    socket.timeout(1500).emit('match-roast', { stats: rows, winner: winnerName }, (err: unknown, res?: { line?: string | null }) => {
+    socket.timeout(1500).emit('match-roast', { stats: rows, winner: winnerName }, (err: unknown, res?: { line?: string | null; receipt?: { requestId?: string } | null }) => {
       clearTimeout(timer);
-      if (!err && res?.line) setRoast(res.line);
-      else fallback();
+      if (!err && res?.line) {
+        setRoast(res.line);
+        setRoastReceipt(res.receipt?.requestId ?? null);
+      } else fallback();
     });
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -193,6 +197,11 @@ export default function Results() {
           {roast && (
             <p className="text-[#ffc93c] text-base md:text-lg short:text-sm italic leading-tight" data-testid="results-roast">
               “{roast}”
+            </p>
+          )}
+          {roast && roastReceipt && (
+            <p className="text-[#f4e7c3]/60 text-xs -mt-1" title={roastReceipt} data-testid="results-roast-receipt">
+              Written on 0G Compute · request {roastReceipt.slice(0, 8)}
             </p>
           )}
 
