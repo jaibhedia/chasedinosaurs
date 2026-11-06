@@ -5,8 +5,9 @@
  * (matches won, the one board where a total is the only meaningful number).
  *
  * Only online matches count, because the server saw them; solo matches run in the browser.
- * Held in memory and written to DATA_DIR/leaderboard.json. On Render's free plan that disk
- * is wiped on every restart and deploy, so point DATA_DIR at a persistent disk to keep it.
+ * Held in memory and saved to Upstash Redis when UPSTASH_REDIS_REST_URL and
+ * UPSTASH_REDIS_REST_TOKEN are set (free, and it survives restarts, deploys and idle sleeps).
+ * Otherwise it goes to DATA_DIR/leaderboard.json, which Render's free plan wipes on all three.
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -32,36 +33,143 @@ interface Entry {
 export interface BoardRow { rank: number; name: string; value: number; bestPoints: number; you: boolean }
 
 const entries = new Map<string, Entry>();
+/** False until the stored board has been read. Saving before then would overwrite it. */
+let loaded = false;
+/** There are changes that haven't been saved. */
+let dirty = false;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+/** Saves run one after another, so a slow one can't land after a newer one. */
+let saving: Promise<void> = Promise.resolve();
+
+const REDIS_KEY = 'chase:leaderboard';
 
 // Read lazily so tests (and a late env change) can point it elsewhere.
 const dataFile = () => join(process.env.DATA_DIR || join(process.cwd(), 'data'), 'leaderboard.json');
 
-export function loadLeaderboard(): void {
+function upstash(): { url: string; token: string } | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? { url, token } : null;
+}
+
+const where = () => (upstash() ? 'Upstash' : dataFile());
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms).unref());
+
+/** One Redis command over Upstash's REST API (a JSON array in the body), so no client library. */
+async function redis(cfg: { url: string; token: string }, command: string[]): Promise<unknown> {
+  const res = await fetch(cfg.url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cfg.token}` },
+    body: JSON.stringify(command),
+    signal: AbortSignal.timeout(5000),
+  });
+  const body = (await res.json().catch(() => ({}))) as { result?: unknown; error?: string };
+  if (!res.ok || body.error) throw new Error(body.error ?? `HTTP ${res.status}`);
+  return body.result;
+}
+
+/** The stored board as JSON, or null when nothing is stored yet. Throws when it can't be read. */
+async function readStore(): Promise<string | null> {
+  const cfg = upstash();
+  if (cfg) return ((await redis(cfg, ['GET', REDIS_KEY])) as string | null) ?? null;
   try {
-    const list = JSON.parse(readFileSync(dataFile(), 'utf8')) as Entry[];
-    for (const e of list) if (e && typeof e.userId === 'string') entries.set(e.userId, e);
-    console.log(`[leaderboard] loaded ${entries.size} players from ${dataFile()}`);
-  } catch {
-    console.log(`[leaderboard] starting empty (${dataFile()})`);
+    return readFileSync(dataFile(), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw err;
   }
 }
 
-/** Write at most every 2s, atomically (temp file + rename) so a crash can't truncate it. */
-function scheduleSave(): void {
-  if (saveTimer) return;
+async function writeStore(json: string): Promise<void> {
+  const cfg = upstash();
+  if (cfg) {
+    await redis(cfg, ['SET', REDIS_KEY, json]);
+    return;
+  }
+  // Atomically (temp file + rename), so a crash can't truncate it.
+  const file = dataFile();
+  mkdirSync(join(file, '..'), { recursive: true });
+  writeFileSync(`${file}.tmp`, json);
+  renameSync(`${file}.tmp`, file);
+}
+
+/** A stored entry plus the matches recorded since startup. The two never overlap. */
+function merge(stored: Entry, recent?: Entry): Entry {
+  if (!recent) return stored;
+  return {
+    ...recent,
+    bestHoldMs: Math.max(stored.bestHoldMs, recent.bestHoldMs),
+    bestSteals: Math.max(stored.bestSteals, recent.bestSteals),
+    bestPoints: Math.max(stored.bestPoints, recent.bestPoints),
+    wins: stored.wins + recent.wins,
+    matches: stored.matches + recent.matches,
+  };
+}
+
+/**
+ * Read the stored board, retrying until it can be read (Upstash may be briefly unreachable).
+ * Matches that finish meanwhile are merged in, and nothing is saved before the read, so a
+ * failed read can't wipe the board.
+ */
+export async function loadLeaderboard(): Promise<void> {
+  for (let wait = 1000; ; wait = Math.min(wait * 2, 60_000)) {
+    let raw: string | null;
+    try {
+      raw = await readStore();
+    } catch (err) {
+      console.warn(`[leaderboard] can't read ${where()}, retrying in ${wait / 1000}s:`, (err as Error).message);
+      await sleep(wait);
+      continue;
+    }
+    let list: Entry[] = [];
+    try {
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) list = parsed as Entry[];
+    } catch {
+      console.warn(`[leaderboard] ${where()} isn't valid JSON; starting empty`);
+    }
+    for (const e of list) if (e && typeof e.userId === 'string') entries.set(e.userId, merge(e, entries.get(e.userId)));
+    loaded = true;
+    console.log(`[leaderboard] loaded ${list.length} players from ${where()}`);
+    if (dirty) scheduleSave();
+    return;
+  }
+}
+
+async function save(): Promise<void> {
+  dirty = false;
+  try {
+    await writeStore(JSON.stringify([...entries.values()]));
+  } catch (err) {
+    console.warn(`[leaderboard] save to ${where()} failed, retrying in 10s:`, (err as Error).message);
+    scheduleSave(10_000);
+  }
+}
+
+/** Save at most every 2s. Before the stored board has been read, only note that a save is owed. */
+function scheduleSave(delay = 2000): void {
+  dirty = true;
+  if (!loaded || saveTimer) return;
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    try {
-      const file = dataFile();
-      mkdirSync(join(file, '..'), { recursive: true });
-      writeFileSync(`${file}.tmp`, JSON.stringify([...entries.values()]));
-      renameSync(`${file}.tmp`, file);
-    } catch (err) {
-      console.warn('[leaderboard] save failed:', (err as Error).message);
-    }
-  }, 2000);
+    saving = saving.then(save);
+  }, delay);
   saveTimer.unref();
+}
+
+/** Save any pending change now, before the process exits. */
+export async function flushLeaderboard(): Promise<void> {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (loaded && dirty) saving = saving.then(save);
+  await saving;
+}
+
+/** For /health: where the board is kept, and whether it has been read yet. */
+export function leaderboardStore(): { store: 'upstash' | 'file'; loaded: boolean } {
+  return { store: upstash() ? 'upstash' : 'file', loaded };
 }
 
 /** Fold a finished online match into each human player's bests. Bots never get an entry. */

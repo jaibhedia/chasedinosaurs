@@ -30,7 +30,7 @@ import { Server, type Socket } from 'socket.io';
 import { botLine, matchRoast } from './botVoice';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
 import { Match } from './match';
-import { BOARDS, leaderboard, loadLeaderboard, recordMatch } from './leaderboard';
+import { BOARDS, flushLeaderboard, leaderboard, leaderboardStore, loadLeaderboard, recordMatch } from './leaderboard';
 
 const PORT = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 /** How long a disconnected player's slot is held open for them to come back. */
@@ -297,6 +297,7 @@ app.get('/health', (_req, res) => {
     rooms: rooms.size,
     uptime: process.uptime(),
     ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null },
+    leaderboard: leaderboardStore(),
   });
 });
 
@@ -310,7 +311,11 @@ app.get('/leaderboard', (req, res) => {
   res.json(leaderboard(board, me));
 });
 
-loadLeaderboard();
+void loadLeaderboard();
+// Render sends SIGTERM before every deploy and restart: save the board's last changes first.
+process.once('SIGTERM', () => {
+  void flushLeaderboard().finally(() => process.exit(0));
+});
 
 const httpServer = createServer(app);
 
