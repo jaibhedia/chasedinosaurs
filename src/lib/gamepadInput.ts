@@ -14,9 +14,59 @@ const DEADZONE = 0.2;
 // Standard mapping: https://w3c.github.io/gamepad/#remapping
 const A = 0, B = 1, RB = 5, RT = 7, START = 9, UP = 12, DOWN = 13, LEFT = 14, RIGHT = 15;
 
+/** What the game takes from a pad in one frame. */
+export interface PadState {
+  /** Stick deflection, -1..1 on each axis, length at most 1. */
+  x: number;
+  y: number;
+  power: boolean;
+  menu: boolean;
+  back: boolean;
+}
+
+const IDLE: PadState = { x: 0, y: 0, power: false, menu: false, back: false };
+
 function isDown(pad: Gamepad, i: number): boolean {
   const b = pad.buttons[i];
   return !!b && (b.pressed || b.value > 0.5);
+}
+
+/** The first connected controller, or null. */
+export function firstPad(): Gamepad | null {
+  return Array.from(navigator.getGamepads?.() ?? []).find((p): p is Gamepad => !!p?.connected) ?? null;
+}
+
+/**
+ * Reads a pad the way the game does. The controls screen uses it too, so what lights up
+ * there is exactly what a match would get.
+ */
+export function readPad(pad: Gamepad): PadState {
+  let x = 0;
+  let y = 0;
+  const dx = (isDown(pad, RIGHT) ? 1 : 0) - (isDown(pad, LEFT) ? 1 : 0);
+  const dy = (isDown(pad, DOWN) ? 1 : 0) - (isDown(pad, UP) ? 1 : 0);
+  if (dx || dy) {
+    const m = Math.hypot(dx, dy);
+    x = dx / m;
+    y = dy / m;
+  } else {
+    const ax = pad.axes[0] ?? 0;
+    const ay = pad.axes[1] ?? 0;
+    const m = Math.min(1, Math.hypot(ax, ay));
+    if (m > DEADZONE) {
+      // Rescale past the deadzone so a light push still walks (the scene's throttle curve).
+      const k = (m - DEADZONE) / (1 - DEADZONE) / Math.hypot(ax, ay);
+      x = ax * k;
+      y = ay * k;
+    }
+  }
+  return {
+    x,
+    y,
+    power: isDown(pad, A) || isDown(pad, RB) || isDown(pad, RT),
+    menu: isDown(pad, START),
+    back: isDown(pad, B),
+  };
 }
 
 /** Start polling the first connected controller. Returns a stop function. */
@@ -25,49 +75,27 @@ export function startGamepad(): () => void {
   // We wrote a non-zero stick last frame, so we owe it a zero when the pad goes idle.
   // While idle we write nothing, which leaves the touch stick alone on touch screens.
   let steering = false;
-  let prev: Record<number, boolean> = {};
+  let prev = IDLE;
 
   const tick = () => {
     raf = requestAnimationFrame(tick);
-    const pad = Array.from(navigator.getGamepads?.() ?? []).find((p): p is Gamepad => !!p?.connected);
+    const pad = firstPad();
     if (!pad) return;
 
-    let x = 0;
-    let y = 0;
-    const dx = (isDown(pad, RIGHT) ? 1 : 0) - (isDown(pad, LEFT) ? 1 : 0);
-    const dy = (isDown(pad, DOWN) ? 1 : 0) - (isDown(pad, UP) ? 1 : 0);
-    if (dx || dy) {
-      const m = Math.hypot(dx, dy);
-      x = dx / m;
-      y = dy / m;
-    } else {
-      const ax = pad.axes[0] ?? 0;
-      const ay = pad.axes[1] ?? 0;
-      const m = Math.min(1, Math.hypot(ax, ay));
-      if (m > DEADZONE) {
-        // Rescale past the deadzone so a light push still walks (the scene's throttle curve).
-        const k = (m - DEADZONE) / (1 - DEADZONE) / Math.hypot(ax, ay);
-        x = ax * k;
-        y = ay * k;
-      }
-    }
-    if (x || y) {
-      setStick(x, y);
+    const now = readPad(pad);
+    if (now.x || now.y) {
+      setStick(now.x, now.y);
       steering = true;
     } else if (steering) {
       setStick(0, 0);
       steering = false;
     }
 
-    const now: Record<number, boolean> = {};
-    for (const i of [A, B, RB, RT, START]) now[i] = isDown(pad, i);
-    const fire = now[A] || now[RB] || now[RT];
-    const wasFire = prev[A] || prev[RB] || prev[RT];
-    if (fire && !wasFire) pressPower();
-    if (!fire && wasFire) releasePower();
+    if (now.power && !prev.power) pressPower();
+    if (!now.power && prev.power) releasePower();
     const store = useGameStore.getState();
-    if (now[START] && !prev[START]) store.setPaused(!store.paused);
-    if (now[B] && !prev[B] && store.paused) store.setPaused(false);
+    if (now.menu && !prev.menu) store.setPaused(!store.paused);
+    if (now.back && !prev.back && store.paused) store.setPaused(false);
     prev = now;
   };
 
@@ -75,6 +103,6 @@ export function startGamepad(): () => void {
   return () => {
     cancelAnimationFrame(raf);
     if (steering) setStick(0, 0);
-    if (prev[A] || prev[RB] || prev[RT]) releasePower();
+    if (prev.power) releasePower();
   };
 }
