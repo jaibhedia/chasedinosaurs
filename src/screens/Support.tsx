@@ -116,7 +116,7 @@ export default function Support() {
           <OtherWaysCard native={native} />
         </motion.div>
 
-        <Button onClick={() => navigate('/')} variant="outline" size="lg">
+        <Button onClick={() => navigate('/')} variant="outline" size="lg" data-pad-back>
           <ArrowLeft className="mr-2 h-4 md:h-5 w-4 md:w-5" />
           Back
         </Button>

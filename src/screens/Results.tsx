@@ -245,7 +245,7 @@ export default function Results() {
               <Share2 className="w-5 h-5" />
               {shareState === 'saved' ? 'Saved!' : shareState === 'failed' ? 'Try again' : playerWon ? 'Share win' : 'Share'}
             </Button>
-            <Button onClick={home} variant="outline" size="lg" className="gap-2">
+            <Button onClick={home} variant="outline" size="lg" className="gap-2" data-pad-back>
               <Home className="w-5 h-5" /> Home
             </Button>
           </div>

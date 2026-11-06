@@ -20,9 +20,11 @@ interface ModeCardProps {
   from: number;
   onClick: () => void;
   testId: string;
+  /** A controller starts on this card's button (padNav.ts). */
+  padStart?: boolean;
 }
 
-function ModeCard({ title, tagline, taglineColor, bullets, bulletColor, cta, icon: Icon, iconColor, from, onClick, testId }: ModeCardProps) {
+function ModeCard({ title, tagline, taglineColor, bullets, bulletColor, cta, icon: Icon, iconColor, from, onClick, testId, padStart }: ModeCardProps) {
   return (
     <motion.div
       initial={{ x: from, opacity: 0 }}
@@ -32,6 +34,8 @@ function ModeCard({ title, tagline, taglineColor, bullets, bulletColor, cta, ico
       whileTap={{ scale: 0.96 }}
       onClick={onClick}
       className="relative cursor-pointer"
+      // whileTap makes the card focusable too; its button is the one stop for keys and pads.
+      tabIndex={-1}
       data-testid={testId}
     >
       <div className="relative pixel-panel p-4 md:p-8 short:p-3 overflow-hidden h-full flex flex-col">
@@ -48,7 +52,7 @@ function ModeCard({ title, tagline, taglineColor, bullets, bulletColor, cta, ico
             </li>
           ))}
         </ul>
-        <Button variant="game" size="lg" className="w-full">{cta}</Button>
+        <Button variant="game" size="lg" className="w-full" data-pad-autofocus={padStart || undefined}>{cta}</Button>
       </div>
     </motion.div>
   );
@@ -113,6 +117,7 @@ export default function ModeSelect() {
               from={0}
               onClick={() => pick('/quick')}
               testId="mode-quick"
+              padStart
             />
             <ModeCard
               title="Friends"
@@ -129,7 +134,7 @@ export default function ModeSelect() {
             />
           </div>
 
-          <Button onClick={() => navigate('/')} variant="outline" size="lg">
+          <Button onClick={() => navigate('/')} variant="outline" size="lg" data-pad-back>
             <ArrowLeft className="mr-2 h-4 md:h-5 w-4 md:w-5" />
             Back
           </Button>

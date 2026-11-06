@@ -331,7 +331,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
           ) : (
             <p className="text-[#f4e7c3]/80">Finding a match…</p>
           )}
-          <Button variant="outline" onClick={() => navigate('/play')} className="gap-2">
+          <Button variant="outline" onClick={() => navigate('/play')} className="gap-2" data-pad-back>
             <ArrowLeft className="w-4 h-4" /> Back
           </Button>
         </div>
@@ -431,7 +431,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
           )}
 
           <div className="text-center">
-            <Button variant="outline" onClick={() => navigate('/play')} className="gap-2">
+            <Button variant="outline" onClick={() => navigate('/play')} className="gap-2" data-pad-back>
               <ArrowLeft className="w-4 h-4" /> Back
             </Button>
           </div>

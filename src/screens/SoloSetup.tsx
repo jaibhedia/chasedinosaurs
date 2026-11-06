@@ -124,7 +124,7 @@ export default function SoloSetup() {
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button onClick={() => navigate('/play')} variant="outline" size="lg" className="gap-2">
+          <Button onClick={() => navigate('/play')} variant="outline" size="lg" className="gap-2" data-pad-back>
             <ArrowLeft className="w-5 h-5" />
             Back
           </Button>

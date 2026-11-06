@@ -18,6 +18,7 @@ export default function Settings() {
             onClick={() => navigate('/')}
             className="pixel-button flex h-10 w-10 items-center justify-center !p-0"
             aria-label="Back to the main menu"
+            data-pad-back
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
