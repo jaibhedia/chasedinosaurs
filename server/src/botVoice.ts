@@ -13,6 +13,7 @@
  * so bots never go silent and a provider outage costs nothing.
  */
 import { getAiClient, AI_MODEL } from './ai/provider';
+import { keepReceipt, receiptOf, type Receipt } from './ai/receipts';
 
 export type Persona = 'aggressive' | 'sneaky' | 'cocky' | 'cautious';
 export type VoiceEvent = 'grab' | 'steal' | 'lost' | 'close' | 'final';
@@ -48,7 +49,7 @@ function clean(text: string | null | undefined): string | null {
   return line.length > 0 ? line : null;
 }
 
-async function complete(system: string, user: string, maxTokens: number): Promise<string | null> {
+async function complete(system: string, user: string, maxTokens: number, kind: Receipt['kind']): Promise<{ text: string; receipt: Receipt | null } | null> {
   const llm = getAiClient();
   if (!llm || Date.now() < backoffUntil) return null;
   try {
@@ -61,7 +62,12 @@ async function complete(system: string, user: string, maxTokens: number): Promis
       },
       { timeout: TIMEOUT_MS, maxRetries: 0 },
     );
-    return clean(res.choices?.[0]?.message?.content);
+    const text = clean(res.choices?.[0]?.message?.content);
+    if (!text) return null;
+    // On the 0G Compute Router, every response says which request and provider served it.
+    const receipt = receiptOf(res, kind);
+    if (receipt) keepReceipt(receipt);
+    return { text, receipt };
   } catch (err) {
     const status = (err as { status?: number })?.status;
     const msg = (err as Error).message || '';
@@ -100,13 +106,13 @@ export async function botLine(req: LineRequest): Promise<string | null> {
     `You are ${name}, a ${persona} dinosaur. Right now: ${situation}.` +
     (seconds !== null ? ` ${seconds} seconds left.` : '') +
     (req.holding === true ? ' You are holding the egg.' : '');
-  return complete(SYSTEM, user, 30);
+  return (await complete(SYSTEM, user, 30, 'line'))?.text ?? null;
 }
 
 export interface RoastStat { name: unknown; isBot?: unknown; grabs?: unknown; heldS?: unknown; you?: unknown }
 
-/** One line summing up the match for the results screen, or null. */
-export async function matchRoast(stats: RoastStat[], winner: unknown): Promise<string | null> {
+/** One line summing up the match for the results screen (with its 0G receipt, if any), or null. */
+export async function matchRoast(stats: RoastStat[], winner: unknown): Promise<{ line: string; receipt: Receipt | null } | null> {
   if (!Array.isArray(stats) || stats.length === 0) return null;
   const rows = stats.slice(0, 4).map((s) => ({
     name: str(s.name, 16),
@@ -118,5 +124,6 @@ export async function matchRoast(stats: RoastStat[], winner: unknown): Promise<s
   const system = `You write the one-line verdict shown after a match of "Chase Dinosaurs", a 60-second game where dinosaurs fight over one golden egg and whoever holds it at the buzzer wins.
 Tease the player marked "you" in a friendly way, based only on the numbers given. At most 14 words, no quotes, no emoji. Family-friendly.`;
   const user = `Winner: ${str(winner, 16) || 'nobody'}. Players: ${JSON.stringify(rows)}`;
-  return complete(system, user, 40);
+  const out = await complete(system, user, 40, 'roast');
+  return out && { line: out.text, receipt: out.receipt };
 }

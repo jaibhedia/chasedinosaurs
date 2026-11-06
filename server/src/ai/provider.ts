@@ -31,6 +31,17 @@ export const AI_MODEL = process.env.AI_MODEL || process.env.OG_MODEL || '';
 /** True only when the server can actually reach a model. */
 export const aiEnabled = Boolean(apiKey && AI_MODEL);
 
+const host = (() => {
+  try {
+    return baseURL ? new URL(baseURL).host : '';
+  } catch {
+    return '';
+  }
+})();
+
+/** Served by the 0G Compute Router (router-api.0g.ai), whose responses carry receipts. */
+const aiOnZeroG = host.includes('0g.ai') || host.includes('integratenetwork');
+
 /**
  * Human-readable provider name, shown in /health and the in-game AI pill.
  * Derived from the endpoint host so the HUD never claims the wrong vendor.
@@ -39,13 +50,8 @@ export const aiProviderName: string =
   process.env.AI_PROVIDER_NAME ||
   (() => {
     if (!baseURL) return 'OpenAI';
-    try {
-      const host = new URL(baseURL).host;
-      if (host.includes('0g.ai') || host.includes('integratenetwork')) return '0G Compute';
-      return host;
-    } catch {
-      return 'custom';
-    }
+    if (aiOnZeroG) return '0G Compute';
+    return host || 'custom';
   })();
 
 let client: OpenAI | null = null;

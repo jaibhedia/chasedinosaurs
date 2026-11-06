@@ -29,6 +29,7 @@ import rateLimit from 'express-rate-limit';
 import { Server, type Socket } from 'socket.io';
 import { botLine, matchRoast } from './botVoice';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
+import { recentReceipts } from './ai/receipts';
 import { Match } from './match';
 import { BOARDS, flushLeaderboard, isVerified, leaderboard, leaderboardStore, loadLeaderboard, markVerified, recordMatch } from './leaderboard';
 import { rpContext, verifyProof, worldConfig, worldEnabled, WorldError } from './world';
@@ -297,7 +298,7 @@ app.get('/health', (_req, res) => {
     ok: true,
     rooms: rooms.size,
     uptime: process.uptime(),
-    ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null },
+    ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null, lastReceipt: recentReceipts(1)[0] ?? null },
     leaderboard: leaderboardStore(),
     world: { enabled: worldEnabled },
   });
@@ -311,6 +312,14 @@ app.get('/leaderboard', (req, res) => {
   const board = BOARDS.find((b) => b === req.query.board) ?? 'hold';
   const me = typeof req.query.me === 'string' ? req.query.me.slice(0, 64) : '';
   res.json({ ...leaderboard(board, me, 20, worldEnabled), verifiedOnly: worldEnabled, youVerified: worldEnabled && isVerified(me) });
+});
+
+/**
+ * Receipts for the bots' recent AI lines on the 0G Compute Router: request id, provider
+ * address and time. Empty on other providers. No prompts or lines.
+ */
+app.get('/ai/receipts', (_req, res) => {
+  res.json({ provider: aiProviderName, receipts: recentReceipts() });
 });
 
 // --- World ID: one human, one row on the all-time board (off unless configured) --------
@@ -780,10 +789,12 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
   });
 
   /** One line summing up the finished match for the results screen, or null. */
-  socket.on('match-roast', async (payload: any, ack?: (res: { line: string | null }) => void) => {
+  socket.on('match-roast', async (payload: any, ack?: (res: { line: string | null; receipt?: { requestId: string; provider: string | null } | null }) => void) => {
     if (typeof ack !== 'function') return;
     if (!rateOk(`${socket.id}:roast`, 3, 30_000)) { ack({ line: null }); return; }
-    ack({ line: await matchRoast(payload?.stats ?? [], payload?.winner) });
+    const roast = await matchRoast(payload?.stats ?? [], payload?.winner);
+    const r = roast?.receipt;
+    ack({ line: roast?.line ?? null, receipt: r ? { requestId: r.requestId, provider: r.provider } : null });
   });
 
   /** Admin sign-in for spectating: an allowlisted email, plus the passcode when one is set. */
