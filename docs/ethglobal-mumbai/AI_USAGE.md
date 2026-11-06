@@ -267,3 +267,29 @@ work, and gave mainnet steps for 0G and the Developer Portal steps for World ID.
 
 > not able to at all fucking setup 0g testent fucet and ai key and world chain as well fucking
 > give accurate steps mf
+
+### P17 · 2026-11-07, about 03:32 IST · the submission page text
+
+> okay give me the eth page details for the page here ill submit video well see
+
+### P18 · 2026-11-07, about 03:38 IST · Render's deploy log
+
+> [pasted: Render's deploy log for `3e045e6`, with the bots on "0G Compute" but the Groq model
+> `llama-3.1-8b-instant`, the AI smoke test failing with "401 Invalid authentication token",
+> World ID on, and Upstash reads failing with HTTP 405]
+
+### P19 · 2026-11-07, about 03:50 IST · the 0G console
+
+Claude found that the testnet provider in this console works where the testnet Router doesn't,
+and that its receipts come in a header the code didn't read (`64033d5`).
+
+> what to do here
+> [pasted: pc.0g.ai's Advanced console on testnet, with 1.50 0G for provider
+> 0xd6269e257761705B9e442E59794703762DFcC940 at compute-network-6.integratenetwork.work, serving
+> qwen/qwen3.8-omni-flash, and an `app-sk-` API key named "chase"]
+
+### P20 · 2026-11-07, about 03:52 IST · the Upstash console
+
+> what to do here
+> [pasted: the Upstash console for the Redis database "chase" (Mumbai, free tier), with endpoint
+> related-llama-187209.upstash.io and the tokens hidden]

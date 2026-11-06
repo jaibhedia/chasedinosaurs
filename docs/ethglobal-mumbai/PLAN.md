@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 1h 30m to freeze, 5h 30m to the deadline (2026-11-07 03:29 IST)
+> ⏱ Time left at last update: 1h 05m to freeze, 5h 05m to the deadline (2026-11-07 03:55 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: c509977 -->
+<!-- last-logged: 64033d5 -->
 
 ## Eligibility gates
 
@@ -62,12 +62,18 @@ view, because the spectator shows the live board.
   Set `WORLD_APP_ID`, `WORLD_RP_ID` and `WORLD_RP_SIGNING_KEY` on Render. `/health` then shows
   `world.enabled: true`. The all-time board is empty until someone verifies, so verify once with
   World App on a phone straight away
-- [ ] 0G (F8): mainnet only. Faucet tokens are testnet tokens, and the testnet Router failed TLS
-  verification on 2026-11-07. At pc.0g.ai connect a wallet, deposit real 0G and create an `sk-` key (shown once). Set
-  `AI_BASE_URL` to `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL` (`0gm-1.0-35b-a3b`,
-  or `gpt-4.1-nano` if the bots stay quiet). Play a match, then copy a request id from
-  `<server>/ai/receipts` into the 0G submission. If the list stays empty, the calls are failing or
-  slower than the bots' 1.1 s budget; try the other model
+- [ ] 0G (F8), one of:
+  - **The Router (mainnet):** at pc.0g.ai deposit real 0G and create an `sk-` key (shown once).
+    Set `AI_BASE_URL` to `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL`
+    (`0gm-1.0-35b-a3b`). The testnet Router failed TLS verification on 2026-11-07.
+  - **A provider directly (works on testnet):** at pc.testnet.0g.ai → Advanced, allocate faucet
+    0G to a provider and create an `app-sk-` key. Set `AI_BASE_URL` to the provider's endpoint plus
+    `/v1/proxy` (e.g. `https://compute-network-6.integratenetwork.work/v1/proxy`), `AI_API_KEY` and
+    `AI_MODEL` (that provider's model, e.g. `qwen/qwen3.8-omni-flash`).
+
+  Then play a match and copy a request id from `<server>/ai/receipts` into the 0G submission. If
+  the list stays empty, the calls are failing or slower than the bots' 1.1 s budget; the boot
+  log's `[ai]` smoke test says which
 - [ ] On the live site, check that:
   - points tick, and a steal adds 5
   - `/leaderboard` updates after an online match
@@ -458,8 +464,26 @@ One entry per push, oldest first, written by the post-push routine.
   for the fix (P15).
 - **Partner notes:** 0G's testnet Router (`router-api-testnet.integratenetwork.work`, which
   pc.testnet.0g.ai calls) failed TLS certificate verification from both curl and Node at about
-  03:30 IST, so testnet faucet tokens can't pay for our calls (P16). Mainnet (pc.0g.ai) needs
+  03:30 IST, so testnet faucet tokens can't pay for Router calls (P16). Mainnet (pc.0g.ai) needs
   real 0G.
+
+### F8 fix · Receipts from a 0G provider reached directly · Shipped · 2026-11-07 03:53 IST
+- **Commits:** `64033d5` (1) · PR #8
+- **Files:** `server/src/botVoice.ts`, `server/src/ai/receipts.ts`, `server/src/ai/provider.ts`,
+  `server/src/botVoice.test.ts` · +60/−32
+- **AI:** Claude Code (Opus 5.5) found the gap and fixed it. **Human:** Shantanu funded a testnet
+  provider in pc.0g.ai's Advanced mode and shared the console (P19).
+- **Challenge:** the team's 0G credentials are for a provider reached directly, not the Router:
+  the testnet Router failed TLS verification and mainnet needs real 0G. That provider answers on
+  `<endpoint>/v1/proxy` with an `app-sk-` key but sends no `x_0g_trace`. Its request id comes in
+  the `ZG-Res-Key` header (0G's docs: the header first, then the completion id), so the bots'
+  call now reads it through the OpenAI SDK's `withResponse()`.
+- **Partner notes:** the testnet provider at `compute-network-6.integratenetwork.work`
+  (`qwen/qwen3.8-omni-flash`) answers fine where the testnet Router fails TLS. The Router's
+  receipt is in the body and a direct provider's in a header, so a client that reads receipts
+  needs both.
+- **Verified:** server typecheck ✅ · server tests 22/22 ✅, including a new one where a stand-in
+  provider's `ZG-Res-Key` becomes the roast's receipt.
 
 ## Submission checklist
 
