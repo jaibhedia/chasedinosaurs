@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-
 import { SocketProvider } from '@/providers/SocketProvider';
 import LandscapePrompt from '@/components/LandscapePrompt';
 import { RoomWatcher } from '@/components/RoomWatcher';
+import PadMenuNav from '@/components/PadMenuNav';
 import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { isNativeApp } from '@/lib/platform';
 import { initNative } from '@/lib/native';
@@ -37,6 +38,7 @@ export default function App() {
   return (
     <SocketProvider>
       <RoomWatcher />
+      <PadMenuNav />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/play" element={<ModeSelect />} />
