@@ -135,3 +135,5 @@ swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive
   (P15).
 - 2026-11-07 03:53 IST · F8 also keeps receipts from a 0G provider reached directly
   (`ZG-Res-Key`), because the team's 0G credentials are for one (P19).
+- 2026-11-07 04:08 IST · F7 in staging asks for Proof of Human, so World's simulator can verify
+  without an Orb; production still asks for Selfie Check (P21).

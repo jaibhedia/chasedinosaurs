@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 1h 05m to freeze, 5h 05m to the deadline (2026-11-07 03:55 IST)
+> ⏱ Time left at last update: 0h 50m to freeze, 4h 50m to the deadline (2026-11-07 04:10 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: 64033d5 -->
+<!-- last-logged: f1ffc60 -->
 
 ## Eligibility gates
 
@@ -62,6 +62,10 @@ view, because the spectator shows the live board.
   Set `WORLD_APP_ID`, `WORLD_RP_ID` and `WORLD_RP_SIGNING_KEY` on Render. `/health` then shows
   `world.enabled: true`. The all-time board is empty until someone verifies, so verify once with
   World App on a phone straight away
+  - **No Orb and no Selfie Check?** Use World's simulator: create a second action in **Staging**
+    (e.g. `chase-leaderboard-staging`), set `WORLD_ACTION` to it and `WORLD_ENVIRONMENT=staging`,
+    then verify through the "Use the simulator" link in the Verify popup. While staging is set,
+    only simulator proofs count
 - [ ] 0G (F8), one of:
   - **The Router (mainnet):** at pc.0g.ai deposit real 0G and create an `sk-` key (shown once).
     Set `AI_BASE_URL` to `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL`
@@ -484,6 +488,23 @@ One entry per push, oldest first, written by the post-push routine.
   needs both.
 - **Verified:** server typecheck ✅ · server tests 22/22 ✅, including a new one where a stand-in
   provider's `ZG-Res-Key` becomes the roast's receipt.
+
+### F7 fix · World ID's simulator works in staging · Shipped · 2026-11-07 04:08 IST
+- **Commits:** `f1ffc60` (1), plus a corrected code comment in the next commit · PR #8
+- **Files:** `src/components/WorldVerify.tsx` · +4/−1
+- **AI:** Claude Code (Opus 5.5) worked out why the simulator couldn't verify and fixed it.
+  **Human:** Shantanu reported that he can't get a World ID without an Orb (P21).
+- **Challenge:** without an Orb or Selfie Check in World App, the only way to verify is World's
+  web simulator, which only works with staging actions. The Verify button always asked for Selfie
+  Check, but a Selfie Check proof carries a device integrity signature from the World ID app (the
+  docs' example is Apple App Attest), which a web simulator can't make; World tests Selfie Check
+  in its Sandbox app instead. In staging the button now asks for Proof of Human, which the server
+  already accepts. Production still asks for Selfie Check. `f1ffc60`'s message gives a different
+  reason (IDKit marking Selfie Check as in preview); that note is on the legacy 3.0 preset only.
+- **Partner notes:** the Sandbox app that can test Selfie Check needs approved tester access
+  (TestFlight or a private Play track), which is too slow at 04:00 on submission day. Nothing in
+  the integration guide says which credentials the simulator can issue.
+- **Verified:** `npm run build` (tsc + vite) ✅. Not yet tried end to end with the simulator.
 
 ## Submission checklist
 

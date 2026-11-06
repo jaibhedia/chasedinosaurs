@@ -293,3 +293,10 @@ and that its receipts come in a header the code didn't read (`64033d5`).
 > what to do here
 > [pasted: the Upstash console for the Redis database "chase" (Mumbai, free tier), with endpoint
 > related-llama-187209.upstash.io and the tokens hidden]
+
+### P21 · 2026-11-07, about 04:04 IST · World ID without an Orb
+
+Claude set up the simulator route: in staging, the Verify button asks for Proof of Human
+(`f1ffc60`).
+
+> how to add simulation for world id as i cant sign up as i dont have an orb
