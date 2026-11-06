@@ -30,7 +30,8 @@ import { Server, type Socket } from 'socket.io';
 import { botLine, matchRoast } from './botVoice';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
 import { Match } from './match';
-import { BOARDS, flushLeaderboard, leaderboard, leaderboardStore, loadLeaderboard, recordMatch } from './leaderboard';
+import { BOARDS, flushLeaderboard, isVerified, leaderboard, leaderboardStore, loadLeaderboard, markVerified, recordMatch } from './leaderboard';
+import { rpContext, verifyProof, worldConfig, worldEnabled, WorldError } from './world';
 
 const PORT = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 /** How long a disconnected player's slot is held open for them to come back. */
@@ -298,6 +299,7 @@ app.get('/health', (_req, res) => {
     uptime: process.uptime(),
     ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null },
     leaderboard: leaderboardStore(),
+    world: { enabled: worldEnabled },
   });
 });
 
@@ -308,7 +310,37 @@ app.get('/health', (_req, res) => {
 app.get('/leaderboard', (req, res) => {
   const board = BOARDS.find((b) => b === req.query.board) ?? 'hold';
   const me = typeof req.query.me === 'string' ? req.query.me.slice(0, 64) : '';
-  res.json(leaderboard(board, me));
+  res.json({ ...leaderboard(board, me, 20, worldEnabled), verifiedOnly: worldEnabled, youVerified: worldEnabled && isVerified(me) });
+});
+
+// --- World ID: one human, one row on the all-time board (off unless configured) --------
+app.get('/world/config', (_req, res) => {
+  res.json(worldConfig());
+});
+
+app.post('/world/rp-context', (_req, res) => {
+  if (!worldEnabled) { res.status(404).json({ error: 'off' }); return; }
+  res.json(rpContext());
+});
+
+app.post('/world/verify', express.json({ limit: '64kb' }), async (req, res) => {
+  if (!worldEnabled) { res.status(404).json({ error: 'off' }); return; }
+  const userId = typeof req.body?.userId === 'string' ? req.body.userId.slice(0, 64) : '';
+  if (!userId) { res.status(400).json({ error: 'missing-player' }); return; }
+  try {
+    const proof = await verifyProof(req.body?.result);
+    if (markVerified(userId, proof.nullifier) === 'taken') {
+      res.status(409).json({ error: 'already-linked' });
+      return;
+    }
+    const score = proof.sybilScore === undefined ? '' : `, sybil score ${proof.sybilScore}`;
+    console.log(`[world] verified a player (${proof.credential}${score})`);
+    res.json({ ok: true });
+  } catch (err) {
+    const code = err instanceof WorldError ? err.code : 'invalid';
+    console.warn(`[world] verify failed (${code}):`, (err as Error).message);
+    res.status(code === 'unreachable' ? 502 : 400).json({ error: code });
+  }
 });
 
 void loadLeaderboard();

@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { flushLeaderboard, leaderboard, loadLeaderboard, recordMatch } from './leaderboard';
+import { flushLeaderboard, isVerified, leaderboard, loadLeaderboard, markVerified, recordMatch } from './leaderboard';
 
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'chase-lb-'));
 
@@ -85,4 +85,22 @@ test('Upstash: a failed read never overwrites the board, and a retry merges both
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
     server.close();
   }
+});
+
+test('World ID: one nullifier backs one player, and a verified-only board shows only them', () => {
+  assert.equal(markVerified('lb-ana', '42'), 'ok');
+  assert.equal(markVerified('lb-ana', '42'), 'ok', 'the same player verifying again is fine');
+  assert.equal(markVerified('lb-ben', '42'), 'taken', 'a second profile from the same person is turned away');
+  assert.equal(isVerified('lb-ana'), true);
+  assert.equal(isVerified('lb-ben'), false);
+
+  const all = leaderboard('hold').entries.map((e) => e.name);
+  const verified = leaderboard('hold', 'lb-ben', 20, true);
+  assert.ok(all.includes('Ben'), 'with World ID off, everyone ranks');
+  assert.deepEqual(verified.entries.map((e) => [e.name, e.verified]), [['Ana', true]]);
+  assert.equal(verified.me, null, 'an unverified caller has no rank on the verified board');
+
+  // A player can verify before their first online match; the empty row ranks nowhere.
+  assert.equal(markVerified('lb-new', '7'), 'ok');
+  assert.ok(!leaderboard('hold', '', 20, true).entries.some((e) => e.name === 'Player'));
 });
