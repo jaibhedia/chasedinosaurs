@@ -64,17 +64,18 @@ Status: Planned → Building → Shipped, or Cut (with the reason in §9).
 
 ## 5. Partner prizes
 
-Not chosen yet; pick at most 3. Checked against the
+**Entered: World and 0G**, two of the three allowed. Arc fit too but wasn't built before the
+freeze, so the third slot stays empty. Checked against the
 [prizes page](https://ethglobal.com/events/mumbai/prizes) on 2026-11-06 at 19:50 IST (P3) and ranked
 by fit, hard requirements and the time left. Feedback for each partner goes in the build log's
 Partner notes while integrating.
 
 | # | Partner | Track | How we'd use it | The requirement that decides it | Status |
 |---|---|---|---|---|---|
-| 1 | World · **built (F7)** | [Cont] Best Use of IDKit ($2.5k: up to 2 teams × $1,250) | One human, one row on the all-time board. Today a second browser profile is a second player, so two tabs in a private room can farm wins. Verified players rank; everyone else still plays. Selfie Check is the proportionate credential for a free board; Proof of Human only if cash is attached. | IDKit with server-side verification, a success and an alternative path in the demo, and a short debrief. No licence requirement. | Proposed |
-| 2 | 0G · **built (F8)** | Keep Building on 0G ($3k) | The bots' banter already calls any OpenAI-compatible endpoint; point it at 0G Compute and log the request ids. The game started on 0G agent brains (2026-06-20). | A 0G Compute request id, Storage root hash or Chain contract from this hackathon, a dated changelog from a prior state, and a video under 3 min. Paid at 0G's discretion. | Proposed |
-| 3 | Arc · not started | Arc Studio Continuity Track: Bring Your Project to Arc ($3k) | An organiser-funded USDC prize for the top verified human, paid on Arc from the admin screen. Players never pay in, which keeps it clear of real-money gaming. The ETHOnline build had an Arc USDC escrow (removed 2026-09-24). | Built in Arc Studio: a shareable Studio project, shown in the demo (Studio can start from a GitHub repo). A working frontend and backend, and an architecture diagram. | Proposed |
-| — | Arkiv | Build on Arkiv, existing projects ($3k / $1k, plus $500 with Swarm) | The all-time board as Arkiv entities, which would also stop the Render resets (§8) | "A public repo with an open-source license." The repo is proprietary by the 2026-09-24 decision (ROADMAP §12). | Not picked unless that changes |
+| 1 | World · **built (F7)** | [Cont] Best Use of IDKit ($2.5k: up to 2 teams × $1,250) | One human, one row on the all-time board. Today a second browser profile is a second player, so two tabs in a private room can farm wins. Verified players rank; everyone else still plays. Selfie Check is the proportionate credential for a free board; Proof of Human only if cash is attached. | IDKit with server-side verification, a success and an alternative path in the demo, and a short debrief. No licence requirement. | **Entered** (F7) |
+| 2 | 0G · **built (F8)** | Keep Building on 0G ($3k) | The bots' banter already calls any OpenAI-compatible endpoint; point it at 0G Compute and log the request ids. The game started on 0G agent brains (2026-06-20). | A 0G Compute request id, Storage root hash or Chain contract from this hackathon, a dated changelog from a prior state, and a video under 3 min. Paid at 0G's discretion. | **Entered** (F8) |
+| 3 | Arc · not started | Arc Studio Continuity Track: Bring Your Project to Arc ($3k) | An organiser-funded USDC prize for the top verified human, paid on Arc from the admin screen. Players never pay in, which keeps it clear of real-money gaming. The ETHOnline build had an Arc USDC escrow (removed 2026-09-24). | Built in Arc Studio: a shareable Studio project, shown in the demo (Studio can start from a GitHub repo). A working frontend and backend, and an architecture diagram. | Not entered: not built before the freeze |
+| — | Arkiv | Build on Arkiv, existing projects ($3k / $1k, plus $500 with Swarm) | The all-time board as Arkiv entities, which would also stop the Render resets (§8) | "A public repo with an open-source license." The repo is proprietary by the 2026-09-24 decision (ROADMAP §12). | Not entered: needs an open-source licence |
 
 Ruled out: Hedera (for projects already on Hedera), Whitechain (a USDT payment flow), Uniswap and ENS
 (open source, and no swap or naming use), Chainlink (CCIP state changes), 1inch (Aqua/SwapVM
@@ -93,7 +94,7 @@ swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive
 ## 7. Out of scope
 
 - Wallet or address identity. Admins use email now, and an address comes with the Web3 layer.
-- Partner integrations in this build (recommended in §5, not built yet).
+- Arc's USDC prize for the top verified human (§5): not built, so not entered.
 - Solo matches on the all-time board, because the server can't verify them.
 - Rebinding keys or buttons. The Controls screen shows the bindings; it doesn't change them.
 
@@ -130,3 +131,5 @@ swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive
   built as the last features (P8). PR #7 is the final PR.
 - 2026-11-07 02:55 IST · PR #7 merged (01:43). Fix: on desktop the voice button covered F2's
   live board online (P11); PR #8.
+- 2026-11-07 03:30 IST · §5: World (F7) and 0G (F8) entered; Arc not built, so not entered
+  (P15).
