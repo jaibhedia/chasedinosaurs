@@ -170,6 +170,10 @@ interface GameState {
   minimap: { w: number; h: number; dots: MinimapDot[] };
   /** Live in-match leaderboard rows (unsorted). */
   scoreboard: ScoreRow[];
+  /** Admin spectator: watching roomCode's matches without a seat (see /admin). */
+  spectating: boolean;
+  /** Spectator camera: the player id to follow, or null to follow the egg. */
+  spectateFollow: string | null;
 
   setUserId: (id: string | null) => void;
   initUserId: () => string;
@@ -193,6 +197,8 @@ interface GameState {
   setPaused: (value: boolean) => void;
   setMinimap: (minimap: { w: number; h: number; dots: MinimapDot[] }) => void;
   setScoreboard: (rows: ScoreRow[]) => void;
+  setSpectating: (value: boolean) => void;
+  setSpectateFollow: (id: string | null) => void;
   setEgg: (ownerId: string | null, position: { x: number; y: number } | null) => void;
   setLastEggHolderId: (id: string | null) => void;
   /** Clear everything about the last match, keeping who you are and what you picked. */
@@ -223,6 +229,8 @@ const initialState = {
   paused: false,
   minimap: { w: 0, h: 0, dots: [] as MinimapDot[] },
   scoreboard: [] as ScoreRow[],
+  spectating: false,
+  spectateFollow: null as string | null,
 };
 
 /** Per-match fields: cleared between matches, unlike identity and menu choices. */
@@ -240,6 +248,7 @@ const matchState = {
   paused: false,
   minimap: { w: 0, h: 0, dots: [] as MinimapDot[] },
   scoreboard: [] as ScoreRow[],
+  spectateFollow: null as string | null,
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -290,6 +299,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   setPaused: (value) => set({ paused: value }),
   setMinimap: (minimap) => set({ minimap }),
   setScoreboard: (scoreboard) => set({ scoreboard }),
+  setSpectating: (value) => set({ spectating: value }),
+  setSpectateFollow: (id) => set({ spectateFollow: id }),
   setEgg: (ownerId, position) => set({ eggOwnerId: ownerId, eggPosition: position }),
   setLastEggHolderId: (id) => set({ lastEggHolderId: id }),
   resetMatch: () => set({ ...matchState }),
