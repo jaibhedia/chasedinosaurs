@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 6h 05m to freeze, 10h 05m to the deadline (2026-11-06 22:55 IST)
+> ⏱ Time left at last update: 5h 35m to freeze, 9h 35m to the deadline (2026-11-06 23:25 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: 9635ddf -->
+<!-- last-logged: de5bae2 -->
 
 ## Eligibility gates
 
@@ -39,12 +39,15 @@ view, because the spectator shows the live board.
 | 7 | F7 | World ID: server signing and verification, nullifier per player, verified-only board, the Verify panel | 60 min | Shipped |
 | 8 | F8 | 0G Compute receipts: trace capture, `/ai/receipts`, the line under the roast | 30 min | Shipped |
 | 9 | Arc | Organiser-funded USDC prize on Arc for the top verified human | 3 h | Not started: needs Arc Studio and a funded testnet wallet |
+| 10 | F9 | Player names: one rule set on the server and in the browser, a name field (mode screen, Settings, a room), names on the roster, tags, live board and results | 40 min | Shipped |
+| 11 | F10 | Controller in the menus: the D-pad or stick moves focus, A presses, B goes back; the in-game menu, How to Play and the pad check | 45 min | Shipped |
 
 ## Event go-live (today)
 
 - [x] Merge PR #6 with a merge commit (20:36 IST, `5355089`).
-- [ ] Merge [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7) (F7 World ID, F8 0G
-  receipts) with a **merge commit**. Vercel deploys the web app and Render the server.
+- [ ] Merge [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7), the final PR (F7 World
+  ID, F8 0G receipts, F9 names, F10 controller menus), with a **merge commit**. Vercel deploys
+  the web app and Render the server.
 - [ ] Render env: `ADMIN_EMAILS` (comma-separated) and `ADMIN_PASSCODE`. Without the emails
   nobody can spectate.
 - [ ] Leaderboard storage (free): at upstash.com create a Redis database, copy its REST URL and
@@ -70,6 +73,10 @@ view, because the spectator shows the live board.
 - [ ] Try an Xbox pad on a PC, and the stick-side toggle on a phone
 - [ ] Settings → Controls: press a pad's buttons and see each row light up; flip the stick side
   on a phone
+- [ ] Names (F9): pick one on `/play`, join a room from a second device, and see both names on
+  the roster, over the dinos and, after the match, on `/leaderboard`
+- [ ] Controller menus (F10), with a real pad and no mouse: Home → Play → Quick Play; in a match,
+  Start → the menu → Resume
 
 ## How we commit
 
@@ -370,6 +377,64 @@ One entry per push, oldest first, written by the post-push routine.
   parameters the bots send, for 0G's own `0gm-1.0-35b-a3b`. `glm-5.2`, the earlier example, lists
   neither, so the go-live list now suggests `0gm-1.0-35b-a3b`, with `gpt-4.1-nano` as a fallback.
   The Router's latency against the bots' 1.1 s budget is still untested.
+
+### F9 · Player names · Shipped · 2026-11-06 23:25 IST
+- **Commits:** `3d9f7f8` (server), `989cb07` (picking a name), `4c02af1` (showing it) · PR #7
+- **Files:**
+  - Server: `server/src/names.ts` (new), `server/src/names.test.ts` (new), `server/src/index.ts`
+  - Client: `src/lib/playerName.ts` (new), `src/components/NameField.tsx` (new),
+    `src/store/gameStore.ts`, `src/screens/ModeSelect.tsx`, `src/screens/Settings.tsx`,
+    `src/screens/Lobby.tsx`, `src/scene/gameScene.ts`, `src/screens/Results.tsx`
+  - Size: +248/−23
+- **New vs reused:**
+  - New: a name each player picks, saved on the device, with one rule set on both sides; " 2"
+    for a name already in the room; renaming inside a room before the match.
+  - Reused: the room roster's `player_name` field, which until now held the dino's name, and the
+    existing name tags, live board and results screen.
+- **AI:** Claude Code (Opus 5.5) wrote it and the tests. **Human:** Shantanu asked for a naming
+  system as one of the last two features, for a final PR (P8).
+- **Challenge:** the room already had a name field that every screen ignored, because it always
+  held the dino's name. Making it the player's name meant routing one value through the lobby,
+  the scene, the results and the board. It also closed a gap: `set-character` stored whatever
+  name it was sent, unchecked and of any length.
+- **Verified:**
+  - Server tests 21/21, including the name rules (Devanagari, full-width letters, emoji, length)
+    and the " 2" for a clash.
+  - Browser, two players: both names on the roster with their dinos; "shantanu" typed in the room
+    becomes "shantanu 2"; the live board in the match names the other player. A solo match ends
+    on results listing "Shantanu" (you) and the bots by their dinos. On a 740×360 phone the field
+    fits on the mode screen and in Settings.
+- **Known issues:** names aren't reserved across the all-time board, so two people can both be
+  "Rex" there (World ID is what keeps it one row per person). There's no word filter.
+
+### F10 · Controller navigation in menus · Shipped · 2026-11-06 23:25 IST
+- **Commits:** `76e478b` (navigation), `de5bae2` (where each screen starts, what B presses) · PR #7
+- **Files:**
+  - `src/lib/padNav.ts` (new), `src/components/PadMenuNav.tsx` (new), `src/lib/gamepadInput.ts`,
+    `src/App.tsx`, `src/index.css`
+  - Marks: `src/components/GameMenu.tsx`, `src/components/ControlsPanel.tsx`,
+    `src/components/HowToPlay.tsx`, and the screens Home, ModeSelect, Settings, Lobby, Results,
+    SoloSetup, Support, Leaderboard and Admin
+  - Size: +259/−15
+- **New vs reused:**
+  - New: focus that moves to the nearest button in the direction pressed (hold to repeat), A to
+    press, B to go back, an outline while the pad is in use, and the pad driving the in-game menu.
+  - Reused: F4's pad reading (`readPad`, with a menu reading on top) and its Start/B menu toggle.
+- **AI:** Claude Code (Opus 5.5) wrote it and the browser checks. **Human:** Shantanu reported the
+  menus still couldn't be used with a controller and asked for it last (P8).
+- **Challenge:** the same buttons mean different things in different places. A fires the power in
+  a match but presses buttons in a menu, so the A that picked Resume also fired, and the D-pad
+  steered the dino behind an open menu. The pad now stops steering while the menu is open and
+  fires only on a fresh press with the menu shut. On the controller check, B has to light its row
+  rather than leave the page. "The nearest button down" also needed edge-to-edge distance:
+  centre to centre sent Down from Play to a small footer link.
+- **Verified:** 28 browser checks with a simulated Xbox pad, all passing. Home → Play → Quick Play
+  and back with the pad only; How to Play keeps focus and B skips it; the name field is reachable;
+  B on the controller check stays put while A lights Power; in a solo match Start opens the menu
+  on Resume, Down and A open Controls, B closes the menu, A on Resume closes it, and with the menu
+  shut the pad leaves the page alone. F6's 25 checks and the phone touch test still pass.
+- **Known issues:** tried with a simulated pad, not yet a physical one. A text field needs a
+  keyboard; A only focuses it.
 
 ## Submission checklist
 

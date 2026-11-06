@@ -36,6 +36,9 @@ Tag `pre-ethglobal-mumbai-2026` points at `1dcafa3`, the last commit before the 
 - After Claude ranked the partner prizes against their rules (P3), Shantanu asked Claude to
   integrate the sponsors it judged best without breaking the game (P6). Claude chose World and
   0G, and left Arc for a decision.
+- Shantanu had Claude open PR #7 for World and 0G after PR #6 had already been merged (P7), then
+  asked for a naming system and controller navigation in the menus as the last two features, in
+  that final PR for Shantanu to review and merge (P8).
 
 **AI (Claude Code):** implementation under that direction: drafting code to the PRD's acceptance
 criteria, refactors, tests, and these docs.
@@ -56,22 +59,22 @@ AI role:
 | `.claude/skills/ethglobal-mumbai/` | Setup | generated | Specified the workflow and supplied the rules (P0) |
 | `docs/ethglobal-mumbai/` | Setup | generated | Directed the content (P0, P1) |
 | `README.md` | Setup | generated | The Mumbai section, written to P0's disclosure requirement |
-| `src/store/gameStore.ts` | F5, F2, F1 | generated | Asked for the features (P1) |
+| `src/store/gameStore.ts` | F5, F2, F1, F9 | generated | Asked for the features (P1); player names (P8) |
 | `src/components/MobileControls.tsx` | F5, F6 | generated | Asked for the features (P1, P2) |
-| `src/components/GameMenu.tsx` | F5, F1, F6 | generated | Asked for the features (P1, P2); layout fix from a screenshot (P5) |
-| `src/lib/gamepadInput.ts` | F4, F6 | generated | Asked for the features (P1, P2) |
+| `src/components/GameMenu.tsx` | F5, F1, F6, F10 | generated | Asked for the features (P1, P2); layout fix from a screenshot (P5); controller menus (P8) |
+| `src/lib/gamepadInput.ts` | F4, F6, F10 | generated | Asked for the features (P1, P2); controller menus (P8) |
 | `src/hooks/useGamepadConnected.ts` | F4 | generated | Asked for the feature (P1) |
 | `src/components/Game.tsx` | F4, F1 | generated | Asked for the features (P1) |
 | `src/components/GameHUD.tsx` | F4, F2, F1 | generated | Asked for the features (P1) |
 | `src/lib/haptics.ts` | F4 | generated | Asked for the feature (P1) |
 | `server/src/match.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `server/src/match.test.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
-| `server/src/index.ts` | F2, F3, F1, F7, F8 | generated | Asked for the features; the admin identity plan is email now, wallet later (P1); an alternative to DATA_DIR (P4); sponsor integrations (P6) |
+| `server/src/index.ts` | F2, F3, F1, F7, F8, F9 | generated | Asked for the features; the admin identity plan is email now, wallet later (P1); an alternative to DATA_DIR (P4); sponsor integrations (P6); player names (P8) |
 | `server/src/leaderboard.ts` | F3, F7 | generated | Board rules by Karmanya: best single match, not sums (P1). Asked for storage other than DATA_DIR (P4); verified players (P6) |
 | `server/src/leaderboard.test.ts` | F3, F7 | generated | Board rules by Karmanya (P1); storage other than DATA_DIR (P4); verified players (P6) |
-| `src/screens/Leaderboard.tsx` | F3, F7 | generated | Three boards asked for by Karmanya (P1); the World ID panel (P6) |
-| `src/App.tsx` | F3, F1, F6 | generated | Asked for the features (P1, P2) |
-| `src/screens/Home.tsx` | F3, F6 | generated | Asked for the features (P1, P2) |
+| `src/screens/Leaderboard.tsx` | F3, F7, F10 | generated | Three boards asked for by Karmanya (P1); the World ID panel (P6); controller menus (P8) |
+| `src/App.tsx` | F3, F1, F6, F10 | generated | Asked for the features (P1, P2, P8) |
+| `src/screens/Home.tsx` | F3, F6, F10 | generated | Asked for the features (P1, P2, P8) |
 | `render.yaml` | F3, F1, F7, F8 | generated | Asked for the features (P1, P4, P6) |
 | `server/.env.example` | F3, F1, F7, F8 | generated | Asked for storage other than DATA_DIR (P4); sponsor settings (P6) |
 | `server/src/world.ts` | F7 | generated | Asked for the sponsors Claude judged best (P6) |
@@ -84,7 +87,7 @@ AI role:
 | `server/src/ai/provider.ts` | F8 | generated | Asked for the sponsors Claude judged best (P6) |
 | `server/src/botVoice.ts` | F8 | generated | Asked for the sponsors Claude judged best (P6) |
 | `server/src/botVoice.test.ts` | F8 | generated | Asked for the sponsors Claude judged best (P6) |
-| `src/screens/Admin.tsx` | F1 | generated | Admin-only spectating, email identity for now (P1) |
+| `src/screens/Admin.tsx` | F1, F10 | generated | Admin-only spectating, email identity for now (P1); controller menus (P8) |
 | `src/lib/adminSession.ts` | F1 | generated | Admin-only spectating, email identity for now (P1) |
 | `src/screens/PlayScreen.tsx` | F1 | generated | Asked for the feature (P1) |
 | `src/components/RoomWatcher.tsx` | F1 | generated | Asked for the feature (P1) |
@@ -92,10 +95,22 @@ AI role:
 | `.gitignore` | F3 | generated | Asked for the feature (P1) |
 | `src/lib/scoring.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `src/components/LiveScoreboard.tsx` | F2 | generated | Live per-match board asked for by Karmanya (P1) |
-| `src/scene/gameScene.ts` | F2, F1 | generated | Asked to build on the existing system rather than overhaul it (P1) |
-| `src/screens/Results.tsx` | F2, F8 | generated | Asked for the feature (P1); the 0G receipt (P6) |
-| `src/components/ControlsPanel.tsx` | F6 | generated | Controls for keyboard/mouse, controller and phone, asked for by Karmanya (P2); layout fix from a screenshot (P5) |
-| `src/screens/Settings.tsx` | F6 | generated | A Settings option, asked for by Karmanya (P2) |
+| `src/scene/gameScene.ts` | F2, F1, F9 | generated | Asked to build on the existing system rather than overhaul it (P1); player names (P8) |
+| `src/screens/Results.tsx` | F2, F8, F9, F10 | generated | Asked for the feature (P1); the 0G receipt (P6); names and controller menus (P8) |
+| `src/components/ControlsPanel.tsx` | F6, F10 | generated | Controls for keyboard/mouse, controller and phone, asked for by Karmanya (P2); layout fix from a screenshot (P5); controller menus (P8) |
+| `src/screens/Settings.tsx` | F6, F9, F10 | generated | A Settings option, asked for by Karmanya (P2); names and controller menus (P8) |
+| `server/src/names.ts` | F9 | generated | Asked for a naming system (P8) |
+| `server/src/names.test.ts` | F9 | generated | Asked for a naming system (P8) |
+| `src/lib/playerName.ts` | F9 | generated | Asked for a naming system (P8) |
+| `src/components/NameField.tsx` | F9 | generated | Asked for a naming system (P8) |
+| `src/screens/ModeSelect.tsx` | F9, F10 | generated | Asked for names and controller menus (P8) |
+| `src/screens/Lobby.tsx` | F9, F10 | generated | Asked for names and controller menus (P8) |
+| `src/lib/padNav.ts` | F10 | generated | Reported the menus didn't work with a controller (P8) |
+| `src/components/PadMenuNav.tsx` | F10 | generated | Reported the menus didn't work with a controller (P8) |
+| `src/index.css` | F10 | generated | Reported the menus didn't work with a controller (P8) |
+| `src/components/HowToPlay.tsx` | F10 | generated | Reported the menus didn't work with a controller (P8) |
+| `src/screens/SoloSetup.tsx` | F10 | generated | Reported the menus didn't work with a controller (P8) |
+| `src/screens/Support.tsx` | F10 | generated | Reported the menus didn't work with a controller (P8) |
 
 ## Pre-existing work (before the baseline)
 
@@ -184,3 +199,18 @@ messages are the same as in P1 and are elided here.
 
 > okay start integrating the sponsprs which you feel are good and lmk what you did dont break the
 > existiing game'
+
+### P7 · 2026-11-06, about 22:26 IST · open the PR for World and 0G
+
+After Claude explained that PR #6 had been merged before the World and 0G commits were pushed,
+so they sat on `new` in no PR:
+
+> do it and wait for me to merge and finally give me whats left with integration and what to
+> change any blockers and if yes workaround in concise language and finally give envs what to set
+> and where to get and correctly not some bs
+
+### P8 · 2026-11-06, about 22:52 IST · names and controller menus (adds F9 and F10)
+
+> - Naming system
+> - Controller navigation in menus using controller is still missing add last and create a final
+> pr ill review and merge regive me the fucing next stpes envs and how to get them and done
