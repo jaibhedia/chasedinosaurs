@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 12h 37m to freeze, 16h 37m to the deadline (2026-11-06 16:22 IST)
+> ⏱ Time left at last update: 12h 34m to freeze, 16h 34m to the deadline (2026-11-06 16:26 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: ee51eb0 -->
+<!-- last-logged: 17be8bb -->
 
 ## Eligibility gates
 
@@ -33,7 +33,7 @@ view, because the spectator shows the live board.
 | 1 | F5 | Stick-side preference in the store; MobileControls flips; toggle in the menu | 15 min | Shipped |
 | 2 | F4 | Gamepad polling into the shared touch-input channel; Start/B for the menu | 25 min | Shipped |
 | 3 | F2 | Server: steals and points in `Match`, a 1 s `match-scores` broadcast. Client: a live board in the HUD and points on the results screen | 45 min | Shipped |
-| 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Planned |
+| 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Shipped |
 | 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Planned |
 
 ## How we commit
@@ -115,6 +115,29 @@ One entry per push, oldest first, written by the post-push routine.
   - Typecheck and `npm run build` ✅. Not yet played end to end.
 - **Next / known issues:** the +30 win bonus appears on the results, not on the live board,
   since nobody has won until the buzzer.
+
+### F3 · All-time leaderboard · Shipped · 2026-11-06 16:26 IST
+- **Commits:** `6f37c94` (server), `17be8bb` (client) · PR #6
+- **Files:**
+  - Server: `server/src/leaderboard.ts` (new), `server/src/leaderboard.test.ts` (new),
+    `server/src/index.ts`, `render.yaml`, `.gitignore`
+  - Client: `src/screens/Leaderboard.tsx` (new), `src/App.tsx`, `src/screens/Home.tsx`
+  - Size: +298/−1
+- **New vs reused:**
+  - New: a store of per-player bests, saved to `DATA_DIR/leaderboard.json`, and
+    `GET /leaderboard?board=hold|steals|wins&me=`. Also a `/leaderboard` screen with three
+    tabs, linked from home, that refreshes itself every 20 s.
+  - Reused: F2's per-match stats, which the server already finalises at the buzzer.
+- **AI:** Claude Code (Opus 5.5) wrote it. **Human:** Karmanya defined the three boards and the
+  best-single-match rule rather than sums (P1).
+- **Challenge:** a public board without exposing user ids, which double as reconnect keys. The
+  client sends its own id as `me`, and the server marks only that row and returns its rank.
+- **Verified:** server tests 10/10, including 2 new ones: best single match rather than the
+  sum, plus a tie-break, and no bot entries. Typecheck and `npm run build` ✅.
+- **Next / known issues:**
+  - Wins is a total count, since one match can only give 0 or 1 (asked in PRD §8).
+  - Render's free disk resets on deploy (PRD §8).
+  - Solo matches don't count.
 
 ## Submission checklist
 

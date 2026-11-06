@@ -62,7 +62,14 @@ AI role:
 | `src/lib/haptics.ts` | F4 | generated | Asked for the feature (P1) |
 | `server/src/match.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `server/src/match.test.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
-| `server/src/index.ts` | F2 | generated | Asked for the feature (P1) |
+| `server/src/index.ts` | F2, F3 | generated | Asked for the features (P1) |
+| `server/src/leaderboard.ts` | F3 | generated | Board rules by Karmanya: best single match, not sums (P1) |
+| `server/src/leaderboard.test.ts` | F3 | generated | Board rules by Karmanya (P1) |
+| `src/screens/Leaderboard.tsx` | F3 | generated | Three boards asked for by Karmanya (P1) |
+| `src/App.tsx` | F3 | generated | Asked for the feature (P1) |
+| `src/screens/Home.tsx` | F3 | generated | Asked for the feature (P1) |
+| `render.yaml` | F3 | generated | Asked for the feature (P1) |
+| `.gitignore` | F3 | generated | Asked for the feature (P1) |
 | `src/lib/scoring.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `src/components/LiveScoreboard.tsx` | F2 | generated | Live per-match board asked for by Karmanya (P1) |
 | `src/scene/gameScene.ts` | F2 | generated | Asked to build on the existing system rather than overhaul it (P1) |
