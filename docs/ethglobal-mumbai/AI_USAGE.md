@@ -65,7 +65,7 @@ AI role:
 | `src/lib/gamepadInput.ts` | F4, F6, F10 | generated | Asked for the features (P1, P2); controller menus (P8) |
 | `src/hooks/useGamepadConnected.ts` | F4 | generated | Asked for the feature (P1) |
 | `src/components/Game.tsx` | F4, F1 | generated | Asked for the features (P1) |
-| `src/components/GameHUD.tsx` | F4, F2, F1 | generated | Asked for the features (P1) |
+| `src/components/GameHUD.tsx` | F4, F2, F1 | generated | Asked for the features (P1); spotted the voice button over the points board on the live site (P11) |
 | `src/lib/haptics.ts` | F4 | generated | Asked for the feature (P1) |
 | `server/src/match.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `server/src/match.test.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
@@ -214,3 +214,89 @@ so they sat on `new` in no PR:
 > - Naming system
 > - Controller navigation in menus using controller is still missing add last and create a final
 > pr ill review and merge regive me the fucing next stpes envs and how to get them and done
+
+### P9 · 2026-11-06, about 23:58 IST · continue
+
+With PR #7 waiting for review. Claude drafted the submission text (form, partner write-ups,
+video plan), kept out of the repo until the team decides.
+
+> continue
+
+### P10 · 2026-11-07, about 01:30 IST · settings, the form and go-to-market
+
+> give envs for frontend and bacend and rest and next steps on how to get form submission and
+> fucking gtm
+
+### P11 · 2026-11-07, about 02:08 IST · the voice button over the points board
+
+> [screenshot: the live game on chasedinosaurs.fun at desktop size, with the Voice button drawn
+> over the Points board in the top-right corner]
+> fix the voice button and points able overlapping
+
+### P12 · 2026-11-07, about 03:09 IST · why these partners
+
+Claude explained the picks and the blockers from PRD §5; nothing in the repo changed.
+
+> okay lmk why did you choose these sponsors and not anyother and any blocker in short and simple
+
+### P13 · 2026-11-07, about 03:12 IST · the demo video and the submission page
+
+Claude explained the recording and the form, and added the ETHOnline showcase page (the prior
+state) to the submission drafts.
+
+> also lmk how to create the demo video and fill the hack page before judging
+> "https://ethglobal.com/showcase/chase-dinosaurs-wecqx"
+
+### P14 · 2026-11-07, about 03:16 IST · the finalist pitch
+
+Claude wrote a run sheet and Q&A answers into the submission drafts.
+
+> lastly how tf am i supposed to do the pitch so that they find it tehcnical gtm maxxed and i get
+> a prize how tf bruh
+
+### P15 · 2026-11-07, about 03:22 IST · fix the stale partner section
+
+After Claude flagged that PRD §5 still read "Not chosen yet", with every partner "Proposed":
+
+> and lastl fix the docs issue which you flagged
+
+### P16 · 2026-11-07, about 03:24 IST · 0G and World setup
+
+Claude found that 0G's testnet Router failed TLS verification, so the faucet route couldn't
+work, and gave mainnet steps for 0G and the Developer Portal steps for World ID.
+
+> not able to at all fucking setup 0g testent fucet and ai key and world chain as well fucking
+> give accurate steps mf
+
+### P17 · 2026-11-07, about 03:32 IST · the submission page text
+
+> okay give me the eth page details for the page here ill submit video well see
+
+### P18 · 2026-11-07, about 03:38 IST · Render's deploy log
+
+> [pasted: Render's deploy log for `3e045e6`, with the bots on "0G Compute" but the Groq model
+> `llama-3.1-8b-instant`, the AI smoke test failing with "401 Invalid authentication token",
+> World ID on, and Upstash reads failing with HTTP 405]
+
+### P19 · 2026-11-07, about 03:50 IST · the 0G console
+
+Claude found that the testnet provider in this console works where the testnet Router doesn't,
+and that its receipts come in a header the code didn't read (`64033d5`).
+
+> what to do here
+> [pasted: pc.0g.ai's Advanced console on testnet, with 1.50 0G for provider
+> 0xd6269e257761705B9e442E59794703762DFcC940 at compute-network-6.integratenetwork.work, serving
+> qwen/qwen3.8-omni-flash, and an `app-sk-` API key named "chase"]
+
+### P20 · 2026-11-07, about 03:52 IST · the Upstash console
+
+> what to do here
+> [pasted: the Upstash console for the Redis database "chase" (Mumbai, free tier), with endpoint
+> related-llama-187209.upstash.io and the tokens hidden]
+
+### P21 · 2026-11-07, about 04:04 IST · World ID without an Orb
+
+Claude set up the simulator route: in staging, the Verify button asks for Proof of Human
+(`f1ffc60`).
+
+> how to add simulation for world id as i cant sign up as i dont have an orb

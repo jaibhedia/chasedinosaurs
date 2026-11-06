@@ -12,7 +12,7 @@
  * Every function returns null on any failure; the client then uses its own canned lines,
  * so bots never go silent and a provider outage costs nothing.
  */
-import { getAiClient, AI_MODEL } from './ai/provider';
+import { getAiClient, AI_MODEL, aiOnZeroG } from './ai/provider';
 import { keepReceipt, receiptOf, type Receipt } from './ai/receipts';
 
 export type Persona = 'aggressive' | 'sneaky' | 'cocky' | 'cautious';
@@ -53,19 +53,24 @@ async function complete(system: string, user: string, maxTokens: number, kind: R
   const llm = getAiClient();
   if (!llm || Date.now() < backoffUntil) return null;
   try {
-    const res = await llm.chat.completions.create(
-      {
-        model: AI_MODEL,
-        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-        temperature: 1.0,
-        max_tokens: maxTokens,
-      },
-      { timeout: TIMEOUT_MS, maxRetries: 0 },
-    );
+    const { data: res, response } = await llm.chat.completions
+      .create(
+        {
+          model: AI_MODEL,
+          messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+          temperature: 1.0,
+          max_tokens: maxTokens,
+        },
+        { timeout: TIMEOUT_MS, maxRetries: 0 },
+      )
+      .withResponse();
     const text = clean(res.choices?.[0]?.message?.content);
     if (!text) return null;
-    // On the 0G Compute Router, every response says which request and provider served it.
-    const receipt = receiptOf(res, kind);
+    // On 0G Compute, every response says which request served it: the Router in the body
+    // (with the provider), a provider reached directly in the ZG-Res-Key header, or else
+    // in the completion id.
+    const directId = response.headers.get('zg-res-key') || (aiOnZeroG ? res.id : null);
+    const receipt = receiptOf(res, kind, directId);
     if (receipt) keepReceipt(receipt);
     return { text, receipt };
   } catch (err) {

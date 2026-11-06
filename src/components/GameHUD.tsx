@@ -53,13 +53,16 @@ function SpectatorFollow() {
 }
 
 export default function GameHUD() {
-  const { players, userId, timeRemaining, setPaused, spectating } = useGameStore();
+  const { players, userId, timeRemaining, setPaused, spectating, gameMode, roomCode } = useGameStore();
   // Single shared touch-device check — keeps the HUD in lockstep with MobileControls so
   // the desktop chrome and the touch controls can never render at the same time.
   const isMobile = useIsTouchDevice();
   const padConnected = useGamepadConnected();
 
   const agents = players.filter((p) => p.isBot);
+  // Online, VoiceChat puts its control under the menu button on desktop (it shows under these
+  // same conditions), so the points board starts below it instead of on top of it.
+  const voiceShown = !spectating && gameMode === 'multiplayer' && !!roomCode && !!userId;
 
   const currentPlayer = players.find(
     (p) => p.userId === userId || (!p.isBot && players.length > 0)
@@ -164,13 +167,14 @@ export default function GameHUD() {
         </div>
       )}
 
-      {/* Live points: under the menu button on desktop; compact under the egg chip on touch,
-          where the compact minimap has the top-right corner. */}
+      {/* Live points: under the menu button on desktop (under the voice control when there is
+          one); compact under the egg chip on touch, where the compact minimap has the
+          top-right corner. */}
       <div
         className="pointer-events-none fixed z-[55]"
         style={isMobile
           ? { top: 'calc(env(safe-area-inset-top, 0px) + 2.9rem)', left: 'calc(env(safe-area-inset-left, 0px) + 0.75rem)' }
-          : { top: '4.75rem', right: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)' }}
+          : { top: voiceShown ? '8.5rem' : '4.75rem', right: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)' }}
       >
         <LiveScoreboard compact={isMobile} />
       </div>

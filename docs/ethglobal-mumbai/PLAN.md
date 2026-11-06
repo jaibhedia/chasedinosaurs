@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 5h 35m to freeze, 9h 35m to the deadline (2026-11-06 23:25 IST)
+> ⏱ Time left at last update: 0h 50m to freeze, 4h 50m to the deadline (2026-11-07 04:10 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: de5bae2 -->
+<!-- last-logged: f1ffc60 -->
 
 ## Eligibility gates
 
@@ -45,9 +45,10 @@ view, because the spectator shows the live board.
 ## Event go-live (today)
 
 - [x] Merge PR #6 with a merge commit (20:36 IST, `5355089`).
-- [ ] Merge [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7), the final PR (F7 World
-  ID, F8 0G receipts, F9 names, F10 controller menus), with a **merge commit**. Vercel deploys
-  the web app and Render the server.
+- [x] Merge [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7) (F7 World ID, F8 0G
+  receipts, F9 names, F10 controller menus) with a merge commit (2026-11-07 01:43 IST,
+  `3e045e6`). Vercel and Render picked it up within minutes.
+- [ ] Merge PR #8 (the voice button over the points board) with a **merge commit**.
 - [ ] Render env: `ADMIN_EMAILS` (comma-separated) and `ADMIN_PASSCODE`. Without the emails
   nobody can spectate.
 - [ ] Leaderboard storage (free): at upstash.com create a Redis database, copy its REST URL and
@@ -61,11 +62,22 @@ view, because the spectator shows the live board.
   Set `WORLD_APP_ID`, `WORLD_RP_ID` and `WORLD_RP_SIGNING_KEY` on Render. `/health` then shows
   `world.enabled: true`. The all-time board is empty until someone verifies, so verify once with
   World App on a phone straight away
-- [ ] 0G (F8): at pc.0g.ai connect a wallet, deposit 0G and create an `sk-` key (shown once). Set
-  `AI_BASE_URL` to `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL` (`0gm-1.0-35b-a3b`,
-  or `gpt-4.1-nano` if the bots stay quiet). Play a match, then copy a request id from
-  `<server>/ai/receipts` into the 0G submission. If the list stays empty, the calls are failing or
-  slower than the bots' 1.1 s budget; try the other model
+  - **No Orb and no Selfie Check?** Use World's simulator: create a second action in **Staging**
+    (e.g. `chase-leaderboard-staging`), set `WORLD_ACTION` to it and `WORLD_ENVIRONMENT=staging`,
+    then verify through the "Use the simulator" link in the Verify popup. While staging is set,
+    only simulator proofs count
+- [ ] 0G (F8), one of:
+  - **The Router (mainnet):** at pc.0g.ai deposit real 0G and create an `sk-` key (shown once).
+    Set `AI_BASE_URL` to `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL`
+    (`0gm-1.0-35b-a3b`). The testnet Router failed TLS verification on 2026-11-07.
+  - **A provider directly (works on testnet):** at pc.testnet.0g.ai → Advanced, allocate faucet
+    0G to a provider and create an `app-sk-` key. Set `AI_BASE_URL` to the provider's endpoint plus
+    `/v1/proxy` (e.g. `https://compute-network-6.integratenetwork.work/v1/proxy`), `AI_API_KEY` and
+    `AI_MODEL` (that provider's model, e.g. `qwen/qwen3.8-omni-flash`).
+
+  Then play a match and copy a request id from `<server>/ai/receipts` into the 0G submission. If
+  the list stays empty, the calls are failing or slower than the bots' 1.1 s budget; the boot
+  log's `[ai]` smoke test says which
 - [ ] On the live site, check that:
   - points tick, and a steal adds 5
   - `/leaderboard` updates after an online match
@@ -435,6 +447,64 @@ One entry per push, oldest first, written by the post-push routine.
   shut the pad leaves the page alone. F6's 25 checks and the phone touch test still pass.
 - **Known issues:** tried with a simulated pad, not yet a physical one. A text field needs a
   keyboard; A only focuses it.
+
+### F2 fix · The voice button no longer covers the points board · Shipped · 2026-11-07 02:55 IST
+- **Commits:** `9059eca` (1) · PR #8
+- **Files:** `src/components/GameHUD.tsx` · +8/−4
+- **AI:** Claude Code (Opus 5.5) found the cause and fixed it. **Human:** Shantanu spotted it on
+  the live site and sent a screenshot (P11).
+- **Challenge:** two components pinned to the same corner. Online on desktop, VoiceChat's control
+  sat 5rem from the top and F2's board 4.75rem, both 0.75rem from the right edge. The board now
+  starts at 8.5rem when the voice control shows (same conditions as VoiceChat); solo and
+  spectating keep 4.75rem.
+- **Verified:** measured in live two-player matches at 1280×720 and 1440×900. The voice button
+  spans 80–126 px from the top and the board starts at 136 px, with the menu button clear. Solo
+  has no voice button and the board stays under the menu. No page errors.
+
+### Docs fix · PRD §5 names the partners we entered · 2026-11-07 03:29 IST
+- **Commits:** `c509977` (1) · PR #8
+- **Files:** `docs/ethglobal-mumbai/PRD.md` · +9/−6
+- **AI:** Claude Code (Opus 5.5) flagged the stale section and fixed it. **Human:** Shantanu asked
+  for the fix (P15).
+- **Partner notes:** 0G's testnet Router (`router-api-testnet.integratenetwork.work`, which
+  pc.testnet.0g.ai calls) failed TLS certificate verification from both curl and Node at about
+  03:30 IST, so testnet faucet tokens can't pay for Router calls (P16). Mainnet (pc.0g.ai) needs
+  real 0G.
+
+### F8 fix · Receipts from a 0G provider reached directly · Shipped · 2026-11-07 03:53 IST
+- **Commits:** `64033d5` (1) · PR #8
+- **Files:** `server/src/botVoice.ts`, `server/src/ai/receipts.ts`, `server/src/ai/provider.ts`,
+  `server/src/botVoice.test.ts` · +60/−32
+- **AI:** Claude Code (Opus 5.5) found the gap and fixed it. **Human:** Shantanu funded a testnet
+  provider in pc.0g.ai's Advanced mode and shared the console (P19).
+- **Challenge:** the team's 0G credentials are for a provider reached directly, not the Router:
+  the testnet Router failed TLS verification and mainnet needs real 0G. That provider answers on
+  `<endpoint>/v1/proxy` with an `app-sk-` key but sends no `x_0g_trace`. Its request id comes in
+  the `ZG-Res-Key` header (0G's docs: the header first, then the completion id), so the bots'
+  call now reads it through the OpenAI SDK's `withResponse()`.
+- **Partner notes:** the testnet provider at `compute-network-6.integratenetwork.work`
+  (`qwen/qwen3.8-omni-flash`) answers fine where the testnet Router fails TLS. The Router's
+  receipt is in the body and a direct provider's in a header, so a client that reads receipts
+  needs both.
+- **Verified:** server typecheck ✅ · server tests 22/22 ✅, including a new one where a stand-in
+  provider's `ZG-Res-Key` becomes the roast's receipt.
+
+### F7 fix · World ID's simulator works in staging · Shipped · 2026-11-07 04:08 IST
+- **Commits:** `f1ffc60` (1), plus a corrected code comment in the next commit · PR #8
+- **Files:** `src/components/WorldVerify.tsx` · +4/−1
+- **AI:** Claude Code (Opus 5.5) worked out why the simulator couldn't verify and fixed it.
+  **Human:** Shantanu reported that he can't get a World ID without an Orb (P21).
+- **Challenge:** without an Orb or Selfie Check in World App, the only way to verify is World's
+  web simulator, which only works with staging actions. The Verify button always asked for Selfie
+  Check, but a Selfie Check proof carries a device integrity signature from the World ID app (the
+  docs' example is Apple App Attest), which a web simulator can't make; World tests Selfie Check
+  in its Sandbox app instead. In staging the button now asks for Proof of Human, which the server
+  already accepts. Production still asks for Selfie Check. `f1ffc60`'s message gives a different
+  reason (IDKit marking Selfie Check as in preview); that note is on the legacy 3.0 preset only.
+- **Partner notes:** the Sandbox app that can test Selfie Check needs approved tester access
+  (TestFlight or a private Play track), which is too slow at 04:00 on submission day. Nothing in
+  the integration guide says which credentials the simulator can issue.
+- **Verified:** `npm run build` (tsc + vite) ✅. Not yet tried end to end with the simulator.
 
 ## Submission checklist
 
