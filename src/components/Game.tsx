@@ -9,6 +9,7 @@ import VoiceChat from '@/components/VoiceChat';
 import GameMenu from '@/components/GameMenu';
 import NetStats from '@/components/NetStats';
 import { CoachHints } from '@/components/CoachHints';
+import { startGamepad } from '@/lib/gamepadInput';
 
 export interface GameProps {
   onGameEnd: () => void;
@@ -42,6 +43,9 @@ export function Game({ onGameEnd }: GameProps) {
       document.body.style.touchAction = '';
     };
   }, []);
+
+  // Xbox / standard controllers drive the same input channel as the touch controls.
+  useEffect(() => startGamepad(), []);
 
   // On match end, hold the "time's up" beat briefly so the final grab registers, then
   // hand off to the results screen.

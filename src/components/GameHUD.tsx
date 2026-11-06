@@ -3,6 +3,7 @@ import { Menu, Egg } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
 import { Minimap } from '@/components/Minimap';
 import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
+import { useGamepadConnected } from '@/hooks/useGamepadConnected';
 
 function formatMatchTime(seconds: number) {
   const s = Math.max(0, Math.floor(seconds));
@@ -24,6 +25,7 @@ export default function GameHUD() {
   // Single shared touch-device check — keeps the HUD in lockstep with MobileControls so
   // the desktop chrome and the touch controls can never render at the same time.
   const isMobile = useIsTouchDevice();
+  const padConnected = useGamepadConnected();
 
   const agents = players.filter((p) => p.isBot);
 
@@ -68,7 +70,7 @@ export default function GameHUD() {
             {/* Controls hint (desktop) — left header. */}
             {!isMobile && (
               <div className="pointer-events-none flex items-center gap-3 px-chip hud-lite px-3 py-2">
-                <p className="px-heading text-[9px] tracking-wider text-[#f4e7c3]">WASD/ARROWS</p>
+                <p className="px-heading text-[9px] tracking-wider text-[#f4e7c3]">{padConnected ? 'CONTROLLER · A = POWER' : 'WASD/ARROWS'}</p>
               </div>
             )}
 
