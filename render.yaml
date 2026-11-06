@@ -37,7 +37,8 @@ services:
 
       # --- AI provider: bot personalities and taunts -------------------------
       # Any OpenAI-compatible endpoint. Unset, the bots still play on local tactics
-      # and simply don't talk.
+      # and simply don't talk. On the 0G Compute Router (https://router-api.0g.ai/v1, an
+      # sk- key and a model from pc.0g.ai), every line gets a receipt: see /ai/receipts.
       - key: AI_BASE_URL
         sync: false
       # SECRET.
