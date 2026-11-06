@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Play, RotateCcw, Users, Home, Music, Volume2, VolumeX, ArrowLeftRight } from 'lucide-react';
+import { Play, RotateCcw, Users, Home, Music, Volume2, VolumeX, ArrowLeftRight, EyeOff } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '@/store/gameStore';
@@ -15,7 +15,8 @@ import { clearMatchConfig } from '@/lib/matchConfig';
  */
 export default function GameMenu() {
   const navigate = useNavigate();
-  const { leaveRoom } = useSocket();
+  const { leaveRoom, socket } = useSocket();
+  const spectating = useGameStore((s) => s.spectating);
   const paused = useGameStore((s) => s.paused);
   const setPaused = useGameStore((s) => s.setPaused);
   const gameMode = useGameStore((s) => s.gameMode);
@@ -48,7 +49,21 @@ export default function GameMenu() {
     navigate('/game', { replace: true });
   };
 
-  const items: Array<{ label: string; icon: typeof Play; onClick: () => void; tone: string }> = [
+  // An admin spectator leaves the room's broadcasts and goes back to the room list.
+  const stopWatching = () => {
+    setPaused(false);
+    socket?.emit('stop-spectating');
+    const store = useGameStore.getState();
+    store.setSpectating(false);
+    store.setRoomCode(null);
+    store.resetMatch();
+    navigate('/admin', { replace: true });
+  };
+
+  const items: Array<{ label: string; icon: typeof Play; onClick: () => void; tone: string }> = spectating ? [
+    { label: 'Back to match', icon: Play, onClick: resume, tone: '#6ab04c' },
+    { label: 'Stop watching', icon: EyeOff, onClick: stopWatching, tone: '#e8503a' },
+  ] : [
     { label: online ? 'Back to match' : 'Resume', icon: Play, onClick: resume, tone: '#6ab04c' },
     // A room's match can't be restarted by one player.
     ...(online ? [] : [{ label: 'Restart match', icon: RotateCcw, onClick: restart, tone: '#5fcde4' }]),

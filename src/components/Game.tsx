@@ -16,7 +16,7 @@ export interface GameProps {
 }
 
 export function Game({ onGameEnd }: GameProps) {
-  const { gamePhase, countdownTimer, players, userId } = useGameStore();
+  const { gamePhase, countdownTimer, players, userId, spectating } = useGameStore();
   const endedRef = useRef(false);
 
   const currentPlayer = players.find(
@@ -62,9 +62,11 @@ export function Game({ onGameEnd }: GameProps) {
     >
       <NetStats />
       <GameHUD />
-      <CoachHints />
+      {/* A spectator gets no coaching, no controls, and never joins voice: its mic must not
+          open into a room it isn't playing in. */}
+      {!spectating && <CoachHints />}
       <ConnectionStatus />
-      <VoiceChat />
+      {!spectating && <VoiceChat />}
       <GameMenu />
       <div className="absolute inset-0 w-full h-full">
         <GameCanvas />
@@ -106,12 +108,14 @@ export function Game({ onGameEnd }: GameProps) {
         )}
       </AnimatePresence>
 
-      <MobileControls
-        powerUpReady={powerUpReady}
-        powerUpActive={powerUpActive}
-        powerUpCooldown={powerUpCooldown}
-        powerUpCooldownMax={powerUpCooldownMax}
-      />
+      {!spectating && (
+        <MobileControls
+          powerUpReady={powerUpReady}
+          powerUpActive={powerUpActive}
+          powerUpCooldown={powerUpCooldown}
+          powerUpCooldownMax={powerUpCooldownMax}
+        />
+      )}
     </main>
   );
 }

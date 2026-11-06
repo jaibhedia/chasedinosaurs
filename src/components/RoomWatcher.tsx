@@ -23,7 +23,8 @@ export function RoomWatcher() {
       store.setServerStartTime(serverTime);
       store.setRoomPlayers(players || []);
       store.setMap(gameMaps.find((m) => m.id === mapId) || gameMaps[0]);
-      saveMatchConfig();
+      // A spectator has no seat to come back to after a refresh.
+      if (!store.spectating) saveMatchConfig();
       try { localStorage.removeItem('chase-game-snapshot'); } catch { /* fresh match */ }
       navigate('/game');
     };
