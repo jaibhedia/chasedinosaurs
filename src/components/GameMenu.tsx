@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Play, RotateCcw, Users, Home, Music, Volume2, VolumeX, ArrowLeftRight, EyeOff } from 'lucide-react';
-import { useState } from 'react';
+import { Play, RotateCcw, Users, Home, Music, Volume2, VolumeX, ArrowLeftRight, EyeOff, Gamepad2, ArrowLeft } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '@/store/gameStore';
 import { useSocket } from '@/providers/SocketProvider';
 import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 import { audioManager } from '@/utils/audioManager';
 import { clearMatchConfig } from '@/lib/matchConfig';
+import ControlsPanel from '@/components/ControlsPanel';
 
 /**
  * In-game menu, shown whenever the store is `paused` (the HUD ☰ button sets that).
@@ -27,6 +28,9 @@ export default function GameMenu() {
   const isTouch = useIsTouchDevice();
   const stickSide = useGameStore((s) => s.stickSide);
   const setStickSide = useGameStore((s) => s.setStickSide);
+  // The menu's list, or the controls panel in its place.
+  const [view, setView] = useState<'menu' | 'controls'>('menu');
+  useEffect(() => { if (!paused) setView('menu'); }, [paused]);
 
   const online = gameMode === 'multiplayer';
 
@@ -68,6 +72,7 @@ export default function GameMenu() {
     // A room's match can't be restarted by one player.
     ...(online ? [] : [{ label: 'Restart match', icon: RotateCcw, onClick: restart, tone: '#5fcde4' }]),
     ...(online ? [{ label: 'Leave to lobby', icon: Users, onClick: () => exit('/lobby'), tone: '#ffc93c' }] : []),
+    { label: 'Controls', icon: Gamepad2, onClick: () => setView('controls'), tone: '#5fcde4' },
     { label: 'Main menu', icon: Home, onClick: () => exit('/'), tone: '#e8503a' },
   ];
 
@@ -82,59 +87,78 @@ export default function GameMenu() {
         >
           <div className={`absolute inset-0 ${online ? 'bg-black/30' : 'bg-black/55'}`} onClick={resume} />
           <motion.div
-            className="relative px-panel px-4 py-4 sm:px-8 sm:py-7 flex flex-col items-stretch gap-2 sm:gap-3 w-[min(82vw,320px)] max-h-[88dvh] overflow-y-auto"
+            className={`relative px-panel px-4 py-4 sm:px-8 sm:py-7 flex flex-col items-stretch gap-2 sm:gap-3 ${view === 'controls' ? 'w-[min(92vw,440px)]' : 'w-[min(82vw,320px)]'} max-h-[88dvh] overflow-y-auto`}
             initial={{ scale: 0.85, y: 20 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.85, y: 20 }}
             transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+            data-stick-ignore
           >
-            <p className="px-heading text-center text-base sm:text-2xl mb-0.5 sm:mb-1" style={{ color: '#ffc93c', textShadow: '3px 3px 0 #11111c' }}>
-              {online ? 'MENU' : 'PAUSED'}
-            </p>
-            {online && (
-              <p className="text-center text-[#f4e7c3]/80 text-sm -mt-1 mb-1">The match keeps going. Online games can&apos;t be paused.</p>
-            )}
-            {items.map(({ label, icon: Icon, onClick, tone }) => (
-              <button
-                key={label}
-                onClick={onClick}
-                className="px-chip flex items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
-              >
-                <Icon className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" style={{ color: tone }} />
-                <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">{label}</span>
-              </button>
-            ))}
+            {view === 'controls' ? (
+              <>
+                <p className="px-heading text-center text-base sm:text-2xl mb-0.5 sm:mb-1" style={{ color: '#ffc93c', textShadow: '3px 3px 0 #11111c' }}>
+                  CONTROLS
+                </p>
+                <ControlsPanel live={online} />
+                <button
+                  onClick={() => setView('menu')}
+                  className="px-chip flex items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
+                >
+                  <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 text-[#f4e7c3]" />
+                  <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">Back</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="px-heading text-center text-base sm:text-2xl mb-0.5 sm:mb-1" style={{ color: '#ffc93c', textShadow: '3px 3px 0 #11111c' }}>
+                  {online ? 'MENU' : 'PAUSED'}
+                </p>
+                {online && (
+                  <p className="text-center text-[#f4e7c3]/80 text-sm -mt-1 mb-1">The match keeps going. Online games can&apos;t be paused.</p>
+                )}
+                {items.map(({ label, icon: Icon, onClick, tone }) => (
+                  <button
+                    key={label}
+                    onClick={onClick}
+                    className="px-chip flex items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
+                  >
+                    <Icon className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" style={{ color: tone }} />
+                    <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">{label}</span>
+                  </button>
+                ))}
 
-            {/* Sound controls live here (moved out of the in-game header). */}
-            <div className="mt-1 flex items-center gap-2">
-              <button
-                onClick={toggleMusic}
-                className="px-chip flex flex-1 items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
-                aria-label={musicOn ? 'Stop music' : 'Start music'}
-              >
-                <Music className={`h-4 w-4 sm:h-5 sm:w-5 ${musicOn ? 'text-[#5fcde4]' : 'text-[#e8503a] opacity-60'}`} />
-                <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">Music</span>
-              </button>
-              <button
-                onClick={toggleMute}
-                className="px-chip flex flex-1 items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
-                aria-label={muted ? 'Unmute' : 'Mute'}
-              >
-                {muted ? <VolumeX className="h-4 w-4 sm:h-5 sm:w-5 text-[#e8503a]" /> : <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 text-[#5fcde4]" />}
-                <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">{muted ? 'Muted' : 'Sound'}</span>
-              </button>
-            </div>
+                {/* Sound controls live here (moved out of the in-game header). */}
+                <div className="mt-1 flex items-center gap-2">
+                  <button
+                    onClick={toggleMusic}
+                    className="px-chip flex flex-1 items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
+                    aria-label={musicOn ? 'Stop music' : 'Start music'}
+                  >
+                    <Music className={`h-4 w-4 sm:h-5 sm:w-5 ${musicOn ? 'text-[#5fcde4]' : 'text-[#e8503a] opacity-60'}`} />
+                    <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">Music</span>
+                  </button>
+                  <button
+                    onClick={toggleMute}
+                    className="px-chip flex flex-1 items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
+                    aria-label={muted ? 'Unmute' : 'Mute'}
+                  >
+                    {muted ? <VolumeX className="h-4 w-4 sm:h-5 sm:w-5 text-[#e8503a]" /> : <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 text-[#5fcde4]" />}
+                    <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">{muted ? 'Muted' : 'Sound'}</span>
+                  </button>
+                </div>
 
-            {/* Phones: which thumb steers. The power button moves to the other side. */}
-            {isTouch && (
-              <button
-                onClick={() => setStickSide(stickSide === 'right' ? 'left' : 'right')}
-                className="px-chip flex items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
-                aria-label={`Move the stick to the ${stickSide === 'right' ? 'left' : 'right'}`}
-              >
-                <ArrowLeftRight className="h-4 w-4 sm:h-5 sm:w-5 text-[#5fcde4]" />
-                <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">Stick: {stickSide}</span>
-              </button>
+                {/* Phones: which thumb steers. The power button moves to the other side. */}
+                {isTouch && (
+                  <button
+                    onClick={() => setStickSide(stickSide === 'right' ? 'left' : 'right')}
+                    className="px-chip flex items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
+                    aria-label={`Move the stick to the ${stickSide === 'right' ? 'left' : 'right'}`}
+                  >
+                    <ArrowLeftRight className="h-4 w-4 sm:h-5 sm:w-5 text-[#5fcde4]" />
+                    <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">Stick: {stickSide}</span>
+                  </button>
+                )}
+              </>
             )}
           </motion.div>
         </motion.div>

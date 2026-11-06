@@ -69,6 +69,8 @@ export default function MobileControls({
       const rect = joystickRef.current.getBoundingClientRect();
       const touch = Array.from(e.changedTouches).find(
         (t) =>
+          // A menu drawn over the stick keeps its own taps (the grab area reaches under it on small phones).
+          !(t.target as Element | null)?.closest?.('[data-stick-ignore]') &&
           t.clientX >= rect.left - GRAB_MARGIN &&
           t.clientX <= rect.right + GRAB_MARGIN &&
           t.clientY >= rect.top - GRAB_MARGIN &&
