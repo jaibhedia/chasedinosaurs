@@ -30,6 +30,19 @@ const COOLDOWN_MS = 1200;
 /** Positions older than this don't count as evidence of contact. */
 const STALE_MS = 1500;
 
+/**
+ * Scoring for the live board and the all-time leaderboard: a point for every second with
+ * the egg, 5 for each steal (taking it from another player; the first pickup off the
+ * ground isn't one), 30 for holding it at the buzzer. Must match src/lib/scoring.ts.
+ */
+export const POINTS_PER_SECOND = 1;
+export const POINTS_PER_STEAL = 5;
+export const POINTS_FOR_WIN = 30;
+
+export function matchPoints(heldMs: number, steals: number, won: boolean): number {
+  return Math.floor(heldMs / 1000) * POINTS_PER_SECOND + steals * POINTS_PER_STEAL + (won ? POINTS_FOR_WIN : 0);
+}
+
 export interface Pos { x: number; y: number; t: number; invincible: boolean }
 
 export interface EggOwner {
@@ -40,9 +53,17 @@ export interface EggOwner {
   graceUntil: number;
 }
 
+export interface MatchStat {
+  userId: string;
+  grabs: number;
+  steals: number;
+  heldMs: number;
+  points: number;
+}
+
 export interface MatchResult {
   winnerUserId: string | null;
-  stats: Array<{ userId: string; grabs: number; heldMs: number }>;
+  stats: MatchStat[];
 }
 
 export class Match {
@@ -58,6 +79,7 @@ export class Match {
   private egg: { x: number; y: number } | null = null;
   private positions = new Map<string, Pos>();
   private grabs = new Map<string, number>();
+  private steals = new Map<string, number>();
   private heldMs = new Map<string, number>();
   ended = false;
 
@@ -106,10 +128,17 @@ export class Match {
     this.lastHolder = claimer;
     this.heldSince = now;
     this.grabs.set(claimer, (this.grabs.get(claimer) ?? 0) + 1);
+    if (prev) this.steals.set(claimer, (this.steals.get(claimer) ?? 0) + 1);
     this.seq += 1;
     this.graceUntil = now + GRACE_MS;
     this.lastTagAt = now;
     return { ownerUserId: claimer, prevOwnerUserId: prev, seq: this.seq, graceUntil: this.graceUntil };
+  }
+
+  /** Live tally for the in-match board: the current holder's run counts as it happens. */
+  scores(now = Date.now()): MatchStat[] {
+    const run = this.holder ? Math.max(0, Math.min(now, this.endAt) - this.heldSince) : 0;
+    return this.tally(run, null);
   }
 
   /** Close the match. The last holder at the buzzer wins; null if nobody ever touched it. */
@@ -117,14 +146,23 @@ export class Match {
     this.ended = true;
     const end = Math.min(now, this.endAt);
     if (this.holder) this.heldMs.set(this.holder, (this.heldMs.get(this.holder) ?? 0) + Math.max(0, end - this.heldSince));
+    const winnerUserId = this.holder ?? this.lastHolder;
+    return { winnerUserId, stats: this.tally(0, winnerUserId) };
+  }
+
+  /** Everyone who has touched the egg, with `run` ms added to the current holder's time. */
+  private tally(run: number, winner: string | null): MatchStat[] {
     const ids = new Set([...this.grabs.keys(), ...this.heldMs.keys()]);
-    return {
-      winnerUserId: this.holder ?? this.lastHolder,
-      stats: [...ids].map((userId) => ({
+    return [...ids].map((userId) => {
+      const heldMs = Math.round((this.heldMs.get(userId) ?? 0) + (userId === this.holder ? run : 0));
+      const steals = this.steals.get(userId) ?? 0;
+      return {
         userId,
         grabs: this.grabs.get(userId) ?? 0,
-        heldMs: Math.round(this.heldMs.get(userId) ?? 0),
-      })),
-    };
+        steals,
+        heldMs,
+        points: matchPoints(heldMs, steals, userId === winner),
+      };
+    });
   }
 }

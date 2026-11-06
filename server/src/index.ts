@@ -61,6 +61,8 @@ interface Room {
   match: Match | null;
   /** Fires at the buzzer to settle the match. */
   endTimer: ReturnType<typeof setTimeout> | null;
+  /** Sends the live board (match-scores) once a second while the match runs. */
+  scoreTimer: ReturnType<typeof setInterval> | null;
   /** Quick Play room: filled by matchmaking and started on a timer, no ready-up. */
   quick: boolean;
   /** Who has reported whom (reported userId → reporter userIds). */
@@ -89,6 +91,7 @@ function newRoom(mapId: string, isPublic: boolean, host: LobbyPlayer, quick = fa
     voiceUsers: new Set(),
     match: null,
     endTimer: null,
+    scoreTimer: null,
     quick,
     reports: new Map(),
     voiceBlocked: new Set(),
@@ -128,6 +131,7 @@ function removePlayer(rc: string, room: Room, uid: string): void {
   room.players = room.players.filter((p) => p.user_id !== uid);
   if (room.players.length === 0) {
     if (room.endTimer) clearTimeout(room.endTimer);
+    if (room.scoreTimer) clearInterval(room.scoreTimer);
     if (room.autoStart) clearTimeout(room.autoStart);
     rooms.delete(rc);
     return;
@@ -158,6 +162,12 @@ function startMatch(rc: string): void {
   if (room.endTimer) clearTimeout(room.endTimer);
   // A little after the buzzer, so the last claims in flight still land.
   room.endTimer = setTimeout(() => finishMatch(rc), room.match.endAt - Date.now() + 150);
+  // The live board: everyone's points once a second (a steal also sends one at once).
+  if (room.scoreTimer) clearInterval(room.scoreTimer);
+  room.scoreTimer = setInterval(() => {
+    const m = room.match;
+    if (m && !m.ended && Date.now() >= m.playAt) io.to(rc).emit('match-scores', { stats: m.scores() });
+  }, 1000);
   io.to(rc).emit('game-started', {
     serverTime: room.serverStartTime,
     now: Date.now(),
@@ -172,6 +182,8 @@ function finishMatch(rc: string): void {
   const result = room.match.finish();
   room.match = null;
   room.endTimer = null;
+  if (room.scoreTimer) clearInterval(room.scoreTimer);
+  room.scoreTimer = null;
   room.started = false;
   room.serverStartTime = null;
   // A Quick Play group that stays together carries on as an ordinary room.
@@ -643,8 +655,12 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     const eggX = payload.eggX == null ? null : cleanNum(payload.eggX, -1e5, 1e5);
     const eggY = payload.eggY == null ? null : cleanNum(payload.eggY, -1e5, 1e5);
     const accepted = match.claim(claimer, eggX, eggY);
-    if (accepted) io.to(rc).emit('egg-owner', accepted);
-    else socket.emit('egg-owner', match.owner());
+    if (accepted) {
+      io.to(rc).emit('egg-owner', accepted);
+      io.to(rc).emit('match-scores', { stats: match.scores() });
+    } else {
+      socket.emit('egg-owner', match.owner());
+    }
   });
 
   /** A player (or a bot someone steers) used a power: relay it so everyone sees and feels it. */
