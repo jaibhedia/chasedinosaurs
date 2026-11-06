@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import { io, Socket } from 'socket.io-client';
 import { useGameStore } from '@/store/gameStore';
 import { setGameSocket, recordTimeSample, resetTimeSync } from '@/lib/socketBridge';
+import { resumeSpectating } from '@/lib/adminSession';
 import { resolveSocketUrl } from '@/config';
 import { RESUME_EVENT } from '@/lib/native';
 
@@ -95,7 +96,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     setReady(true);
 
     const rejoinIfNeeded = () => {
-      const { gameMode, roomCode, userId } = useGameStore.getState();
+      const { gameMode, roomCode, userId, spectating } = useGameStore.getState();
+      // An admin spectator has no seat to rejoin: sign in again and keep watching.
+      if (spectating && roomCode) {
+        void resumeSpectating(socket, roomCode);
+        return;
+      }
       if (gameMode === 'multiplayer' && roomCode && userId) {
         socket.emit('rejoin-room', { roomCode, userId });
       }

@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion';
-import { Menu, Egg } from 'lucide-react';
+import { Menu, Egg, Eye } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
 import { Minimap } from '@/components/Minimap';
+import { LiveScoreboard } from '@/components/LiveScoreboard';
 import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
+import { useGamepadConnected } from '@/hooks/useGamepadConnected';
 
 function formatMatchTime(seconds: number) {
   const s = Math.max(0, Math.floor(seconds));
@@ -19,11 +21,43 @@ const MODE_COLOR: Record<string, string> = {
   hunt: '#f87171', intercept: '#fb923c', guard: '#5fcde4', flee: '#facc15', roam: '#9fb0d8',
 };
 
+/** Admin spectator header: which room, and who the camera follows (the egg by default). */
+function SpectatorFollow() {
+  const roomCode = useGameStore((s) => s.roomCode);
+  const rows = useGameStore((s) => s.scoreboard);
+  const follow = useGameStore((s) => s.spectateFollow);
+  const setFollow = useGameStore((s) => s.setSpectateFollow);
+  const chip = (id: string | null, label: string) => (
+    <button
+      key={id ?? 'egg'}
+      type="button"
+      onClick={() => setFollow(id)}
+      className={`px-chip px-2 py-1 transition-all ${follow === id ? 'brightness-125' : 'opacity-60 hover:opacity-90'}`}
+      aria-pressed={follow === id}
+    >
+      <span className="px-heading text-[8px] uppercase text-[#f4e7c3]">{label}</span>
+    </button>
+  );
+  return (
+    <div className="pointer-events-auto flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5 px-chip hud-lite px-2 py-1 sm:gap-2 sm:px-3 sm:py-2">
+        <Eye className="h-3 w-3 shrink-0 text-[#5fcde4] sm:h-4 sm:w-4" aria-hidden />
+        <span className="px-heading text-[8px] uppercase text-[#f4e7c3] sm:text-[9px]">Watching {roomCode}</span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {chip(null, 'Egg')}
+        {rows.map((r) => chip(r.id, r.name))}
+      </div>
+    </div>
+  );
+}
+
 export default function GameHUD() {
-  const { players, userId, timeRemaining, setPaused } = useGameStore();
+  const { players, userId, timeRemaining, setPaused, spectating } = useGameStore();
   // Single shared touch-device check — keeps the HUD in lockstep with MobileControls so
   // the desktop chrome and the touch controls can never render at the same time.
   const isMobile = useIsTouchDevice();
+  const padConnected = useGamepadConnected();
 
   const agents = players.filter((p) => p.isBot);
 
@@ -51,6 +85,7 @@ export default function GameHUD() {
       >
         <div className="relative flex min-h-[44px] items-start justify-between">
           <div className="pointer-events-none flex max-w-[42%] flex-col gap-2 sm:max-w-none sm:flex-row sm:items-center">
+            {spectating ? <SpectatorFollow /> : (
             <div
               className="pointer-events-none flex items-center gap-1.5 px-chip hud-lite px-2 py-1 sm:gap-2 sm:px-3 sm:py-2"
               style={hasEgg ? { background: '#ffc93c' } : undefined}
@@ -64,11 +99,12 @@ export default function GameHUD() {
                     : `Chase ${eggHolder?.character.name ?? 'them'}`}
               </span>
             </div>
+            )}
 
             {/* Controls hint (desktop) — left header. */}
-            {!isMobile && (
+            {!isMobile && !spectating && (
               <div className="pointer-events-none flex items-center gap-3 px-chip hud-lite px-3 py-2">
-                <p className="px-heading text-[9px] tracking-wider text-[#f4e7c3]">WASD/ARROWS</p>
+                <p className="px-heading text-[9px] tracking-wider text-[#f4e7c3]">{padConnected ? 'CONTROLLER · A = POWER' : 'WASD/ARROWS'}</p>
               </div>
             )}
 
@@ -127,6 +163,17 @@ export default function GameHUD() {
           </div>
         </div>
       )}
+
+      {/* Live points: under the menu button on desktop; compact under the egg chip on touch,
+          where the compact minimap has the top-right corner. */}
+      <div
+        className="pointer-events-none fixed z-[55]"
+        style={isMobile
+          ? { top: 'calc(env(safe-area-inset-top, 0px) + 2.9rem)', left: 'calc(env(safe-area-inset-left, 0px) + 0.75rem)' }
+          : { top: '4.75rem', right: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)' }}
+      >
+        <LiveScoreboard compact={isMobile} />
+      </div>
 
       {/* Minimap: full size bottom-right on desktop; compact top-right on touch so it
           clears the joystick (bottom-right) and the power-up (bottom-left). The touch

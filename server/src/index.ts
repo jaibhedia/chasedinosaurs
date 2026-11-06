@@ -21,6 +21,7 @@
 // env vars directly. Never commit the real .env.
 import 'dotenv/config';
 import { createServer } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -29,6 +30,7 @@ import { Server, type Socket } from 'socket.io';
 import { botLine, matchRoast } from './botVoice';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
 import { Match } from './match';
+import { BOARDS, flushLeaderboard, leaderboard, leaderboardStore, loadLeaderboard, recordMatch } from './leaderboard';
 
 const PORT = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 /** How long a disconnected player's slot is held open for them to come back. */
@@ -61,6 +63,8 @@ interface Room {
   match: Match | null;
   /** Fires at the buzzer to settle the match. */
   endTimer: ReturnType<typeof setTimeout> | null;
+  /** Sends the live board (match-scores) once a second while the match runs. */
+  scoreTimer: ReturnType<typeof setInterval> | null;
   /** Quick Play room: filled by matchmaking and started on a timer, no ready-up. */
   quick: boolean;
   /** Who has reported whom (reported userId → reporter userIds). */
@@ -89,6 +93,7 @@ function newRoom(mapId: string, isPublic: boolean, host: LobbyPlayer, quick = fa
     voiceUsers: new Set(),
     match: null,
     endTimer: null,
+    scoreTimer: null,
     quick,
     reports: new Map(),
     voiceBlocked: new Set(),
@@ -128,6 +133,7 @@ function removePlayer(rc: string, room: Room, uid: string): void {
   room.players = room.players.filter((p) => p.user_id !== uid);
   if (room.players.length === 0) {
     if (room.endTimer) clearTimeout(room.endTimer);
+    if (room.scoreTimer) clearInterval(room.scoreTimer);
     if (room.autoStart) clearTimeout(room.autoStart);
     rooms.delete(rc);
     return;
@@ -158,6 +164,12 @@ function startMatch(rc: string): void {
   if (room.endTimer) clearTimeout(room.endTimer);
   // A little after the buzzer, so the last claims in flight still land.
   room.endTimer = setTimeout(() => finishMatch(rc), room.match.endAt - Date.now() + 150);
+  // The live board: everyone's points once a second (a steal also sends one at once).
+  if (room.scoreTimer) clearInterval(room.scoreTimer);
+  room.scoreTimer = setInterval(() => {
+    const m = room.match;
+    if (m && !m.ended && Date.now() >= m.playAt) io.to(rc).emit('match-scores', { stats: m.scores() });
+  }, 1000);
   io.to(rc).emit('game-started', {
     serverTime: room.serverStartTime,
     now: Date.now(),
@@ -170,8 +182,12 @@ function finishMatch(rc: string): void {
   const room = rooms.get(rc);
   if (!room?.match || room.match.ended) return;
   const result = room.match.finish();
+  // The humans still in the room go on the all-time board; bots never do.
+  recordMatch(result, room.players.map((p) => ({ userId: p.user_id, name: p.player_name })));
   room.match = null;
   room.endTimer = null;
+  if (room.scoreTimer) clearInterval(room.scoreTimer);
+  room.scoreTimer = null;
   room.started = false;
   room.serverStartTime = null;
   // A Quick Play group that stays together carries on as an ordinary room.
@@ -281,7 +297,24 @@ app.get('/health', (_req, res) => {
     rooms: rooms.size,
     uptime: process.uptime(),
     ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null },
+    leaderboard: leaderboardStore(),
   });
+});
+
+/**
+ * The all-time leaderboard: best single match per player (hold, steals) and total wins.
+ * `me` (the caller's own user id) only marks their row; other players' ids are never sent.
+ */
+app.get('/leaderboard', (req, res) => {
+  const board = BOARDS.find((b) => b === req.query.board) ?? 'hold';
+  const me = typeof req.query.me === 'string' ? req.query.me.slice(0, 64) : '';
+  res.json(leaderboard(board, me));
+});
+
+void loadLeaderboard();
+// Render sends SIGTERM before every deploy and restart: save the board's last changes first.
+process.once('SIGTERM', () => {
+  void flushLeaderboard().finally(() => process.exit(0));
 });
 
 const httpServer = createServer(app);
@@ -294,9 +327,33 @@ const io = new Server(httpServer, {
   maxHttpBufferSize: 1e5, // 100 KB
 });
 
+// --- Admin spectators --------------------------------------------------------
+/**
+ * Admins can watch any room without taking a seat. Identity is an email on the
+ * ADMIN_EMAILS allowlist for now (a wallet address once the Web3 layer is back). Anyone can
+ * type an email, so with ADMIN_PASSCODE set they need that too.
+ */
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
+);
+const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || '';
+if (ADMIN_EMAILS.size > 0 && !ADMIN_PASSCODE) {
+  console.warn('[admin] ADMIN_PASSCODE is unset: anyone who types an admin email can spectate.');
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
 interface SocketData {
   userId: string | null;
   roomCode: string | null;
+  /** Signed in as an admin (admin-login). */
+  admin?: boolean;
+  /** The room this admin is watching. Spectators are never in room.players. */
+  spectating?: string | null;
 }
 
 io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
@@ -643,8 +700,12 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     const eggX = payload.eggX == null ? null : cleanNum(payload.eggX, -1e5, 1e5);
     const eggY = payload.eggY == null ? null : cleanNum(payload.eggY, -1e5, 1e5);
     const accepted = match.claim(claimer, eggX, eggY);
-    if (accepted) io.to(rc).emit('egg-owner', accepted);
-    else socket.emit('egg-owner', match.owner());
+    if (accepted) {
+      io.to(rc).emit('egg-owner', accepted);
+      io.to(rc).emit('match-scores', { stats: match.scores() });
+    } else {
+      socket.emit('egg-owner', match.owner());
+    }
   });
 
   /** A player (or a bot someone steers) used a power: relay it so everyone sees and feels it. */
@@ -691,6 +752,62 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     if (typeof ack !== 'function') return;
     if (!rateOk(`${socket.id}:roast`, 3, 30_000)) { ack({ line: null }); return; }
     ack({ line: await matchRoast(payload?.stats ?? [], payload?.winner) });
+  });
+
+  /** Admin sign-in for spectating: an allowlisted email, plus the passcode when one is set. */
+  socket.on('admin-login', (payload: any, ack?: (res: { ok: boolean; error?: string }) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!rateOk(`${socket.id}:admin`, 5, 60_000)) { ack({ ok: false, error: 'Too many tries. Wait a minute.' }); return; }
+    const email = cleanStr(payload?.email, 120).trim().toLowerCase();
+    const ok = ADMIN_EMAILS.has(email) && (!ADMIN_PASSCODE || safeEqual(cleanStr(payload?.passcode, 200), ADMIN_PASSCODE));
+    socket.data.admin = ok;
+    if (!ok) console.warn(`[admin] refused sign-in for "${email}"`);
+    ack(ok ? { ok: true } : { ok: false, error: "That email and passcode don't match an admin." });
+  });
+
+  /** Admins only: every room, live, for the spectator picker. */
+  socket.on('admin-rooms', (ack?: (rooms: unknown[]) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!socket.data.admin) { ack([]); return; }
+    const now = Date.now();
+    ack([...rooms.entries()].map(([code, room]) => ({
+      code,
+      players: room.players.map((p) => p.player_name),
+      isPublic: room.isPublic,
+      started: room.started,
+      secondsLeft: room.match ? Math.max(0, Math.ceil((room.match.endAt - now) / 1000)) : null,
+    })));
+  });
+
+  /**
+   * Admins only: watch a room. The socket joins the room's broadcasts (positions, egg,
+   * scores, results) but never its roster, so it takes no seat, can't send gameplay events
+   * (isRoomMember fails) and never steers the bots. Safe to repeat: the scene asks again
+   * once it has loaded, to pick up the egg and scores of a match already running.
+   */
+  socket.on('spectate', (payload: any, ack?: (res: unknown) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!socket.data.admin) { ack({ ok: false, error: 'Sign in as an admin first.' }); return; }
+    const rc = cleanStr(payload?.roomCode, 6).toUpperCase();
+    const room = rooms.get(rc);
+    if (!room) { ack({ ok: false, error: 'That room has closed.' }); return; }
+    if (socket.data.spectating && socket.data.spectating !== rc) socket.leave(socket.data.spectating);
+    socket.data.spectating = rc;
+    socket.join(rc);
+    ack({
+      ok: true,
+      roomCode: rc,
+      mapId: room.mapId,
+      players: publicPlayers(room),
+      serverStartTime: room.serverStartTime,
+      egg: room.match?.owner() ?? null,
+      scores: room.match?.scores() ?? [],
+    });
+  });
+
+  socket.on('stop-spectating', () => {
+    if (socket.data.spectating) socket.leave(socket.data.spectating);
+    socket.data.spectating = null;
   });
 
   // Lightweight RTT probe for the optional in-game net-stats overlay. Echoes the

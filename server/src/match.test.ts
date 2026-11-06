@@ -85,6 +85,22 @@ test('finish names the holder at the buzzer and totals time held', () => {
   assert.equal(m.claim('a', null, null, end + 600), null, 'no claims after the end');
 });
 
+test('points: a second with the egg, 5 a steal (not the first pickup), 30 for the win', () => {
+  const m = match();
+  m.report('a', 100, 100, false, PLAY);
+  m.claim('a', 100, 100, PLAY);
+  m.report('a', 100, 100, false, PLAY + 10_000);
+  m.report('b', 110, 100, false, PLAY + 10_000);
+  m.claim('b', null, null, PLAY + 10_000);
+  // Live: b's current run counts as it happens.
+  assert.deepEqual(m.scores(PLAY + 12_500).find((s) => s.userId === 'b'), { userId: 'b', grabs: 1, steals: 1, heldMs: 2_500, points: 2 + 5 });
+  const r = m.finish(PLAY + MATCH_SECONDS * 1000);
+  const a = r.stats.find((s) => s.userId === 'a');
+  const b = r.stats.find((s) => s.userId === 'b');
+  assert.deepEqual([a?.steals, a?.points], [0, 10]);
+  assert.deepEqual([b?.steals, b?.points], [1, (MATCH_SECONDS - 10) + 5 + 30]);
+});
+
 test('nobody touched the egg: no winner', () => {
   const m = match();
   assert.equal(m.finish(PLAY + MATCH_SECONDS * 1000).winnerUserId, null);

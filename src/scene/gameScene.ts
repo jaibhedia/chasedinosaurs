@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { useGameStore, Player, GameObject, AgentIntent, MinimapDot } from '@/store/gameStore';
+import { useGameStore, Player, GameObject, AgentIntent, MinimapDot, ScoreRow } from '@/store/gameStore';
 import { characters } from '@/data/characters';
 import { audioManager } from '@/utils/audioManager';
 import { buzz } from '@/lib/haptics';
@@ -9,6 +9,7 @@ import { getGameSocket, getServerOffset } from '@/lib/socketBridge';
 import { TUNING, PERSONAS, PERSONA_SPEED, assignRoles, ramp, type BotTuning, type Role } from './botTactics';
 import type { Difficulty } from '@/store/gameStore';
 import { touchInput, resetTouchInput } from '@/lib/touchInput';
+import { matchPoints } from '@/lib/scoring';
 
 const CHAR_SPRITES: Record<string, { name: string }> = {
   doux: { name: 'doux' },
@@ -142,6 +143,8 @@ export class GameScene extends Phaser.Scene {
   /** Online-multiplayer netcode state. */
   private localUserId?: string;
   private isOnlineMp = false;
+  /** An admin watching from /admin: no dino of our own, no input, never steers the bots. */
+  private spectating = false;
   private netBound = false;
   private lastNetSend = 0;
   /** Last position/flags actually broadcast, so idle frames can be skipped instead
@@ -156,6 +159,10 @@ export class GameScene extends Phaser.Scene {
   private onMatchResult?: (payload: any) => void;
   private onRoomRejoined?: (payload: any) => void;
   private onPowerUsed?: (payload: any) => void;
+  private onMatchScores?: (payload: any) => void;
+  /** Live leaderboard: when we last published it and what, so the HUD re-renders only on change. */
+  private lastScoreboardAt = 0;
+  private lastScoreboardKey = '';
   /** Highest egg-owner sequence applied; older updates are ignored. */
   private eggSeq = 0;
   /** Last claim sent per claimer, to throttle claims while touching. */
@@ -329,6 +336,7 @@ export class GameScene extends Phaser.Scene {
     // Online bots only fill empty seats, so they play Easy: the match is about the
     // humans. (They used to play Normal, which with teamwork felt like a second team.)
     this.difficulty = this.gameMode === 'single-player' ? useGameStore.getState().difficulty : 'easy';
+    this.spectating = this.isOnlineMp && useGameStore.getState().spectating;
     this.agentAuthority = this.computeAgentAuthority();
   }
 
@@ -342,6 +350,7 @@ export class GameScene extends Phaser.Scene {
    */
   private computeAgentAuthority(): boolean {
     if (!this.isOnlineMp) return true;
+    if (this.spectating) return false; // spectators watch; the players' clients steer
     const roster = useGameStore.getState().roomPlayers || [];
     const ids = roster.map((p: any) => String(p.user_id)).filter(Boolean).sort();
     this.authorityRank = Math.max(0, ids.indexOf(String(this.localUserId)));
@@ -362,7 +371,7 @@ export class GameScene extends Phaser.Scene {
    * the takeover order is agreed without any negotiation.
    */
   private maybeTakeOverAgents(now: number): void {
-    if (!this.isOnlineMp || this.agentAuthority) return;
+    if (!this.isOnlineMp || this.agentAuthority || this.spectating) return;
     if (!this.gsPlayers.some((p) => p.isBot)) return;
     // Bots don't move in the countdown, and the clients' scenes don't all start at the
     // same moment, so only start counting silence once the match is on.
@@ -670,6 +679,8 @@ export class GameScene extends Phaser.Scene {
     this.gsPlayers = finalPlayers;
     setPlayers(finalPlayers);
     finalPlayers.forEach(p => this.createPlayerSprite(p));
+    // A spectator's own dino is never shown (and never moves, claims or uses a power).
+    if (this.spectating) this.playerSprites['player']?.setVisible(false);
 
     // One line that answers "why are there no AI opponents" without a debugger: how many
     // humans the roster had, how many agents we filled with, and whether this client is
@@ -700,12 +711,10 @@ export class GameScene extends Phaser.Scene {
       // late and turns felt mushy.
       this.cameras.main.startFollow(this.cameraTarget, true, 1, 1);
       // Gentle follow zoom (1.3 max) — clamp down on small viewports so more of the map stays visible.
-      const zoom = Math.min(CAMERA_ZOOM, Math.max(1.0, this.scale.width / 1100));
-      this.cameras.main.setZoom(zoom);
-      this.scale.on('resize', () => {
-        const z = Math.min(CAMERA_ZOOM, Math.max(1.0, this.scale.width / 1100));
-        this.cameras.main.setZoom(z);
-      });
+      // Spectators (an admin on a big screen) get the wide view.
+      const zoomFor = () => (this.spectating ? 1 : Math.min(CAMERA_ZOOM, Math.max(1.0, this.scale.width / 1100)));
+      this.cameras.main.setZoom(zoomFor());
+      this.scale.on('resize', () => this.cameras.main.setZoom(zoomFor()));
     }
 
     // Window-level key handling (not Phaser's canvas-scoped input): movement keeps
@@ -768,7 +777,8 @@ export class GameScene extends Phaser.Scene {
     // dropping mid-match doesn't leave the agents frozen for everyone else.
     this.maybeTakeOverAgents(performance.now());
     this.updateMinimap(_time);
-    this.updateEggArrow();
+    this.updateScoreboard(_time);
+    if (!this.spectating) this.updateEggArrow(); // the spectator camera already follows the egg
 
     // Solo: the pause menu stops the clock. Online: the room's clock never stops, so the
     // match still ends on time for everyone while one player has the menu open.
@@ -2142,6 +2152,9 @@ export class GameScene extends Phaser.Scene {
       // Egg ownership, decided by the server.
       this.onEggOwner = (payload: any) => this.applyEggOwner(payload);
       socket.on('egg-owner', this.onEggOwner);
+      // The live board's numbers: the server's tally once a second and on every steal.
+      this.onMatchScores = (payload: any) => this.applyMatchScores(payload);
+      socket.on('match-scores', this.onMatchScores);
       // The server's verdict at the buzzer.
       this.onMatchResult = (payload: any) => {
         if (!payload) return;
@@ -2212,7 +2225,7 @@ export class GameScene extends Phaser.Scene {
       // a second or more on every handover.
       this.onPeerGone = (payload: any) => {
         const gone = String(payload?.userId ?? '');
-        if (!gone || this.agentAuthority || gone !== this.lastAgentFrom) return;
+        if (!gone || this.agentAuthority || this.spectating || gone !== this.lastAgentFrom) return;
         if (this.currentPhase !== 'playing' || !this.gsPlayers.some((p) => p.isBot)) return;
         const list: any[] = Array.isArray(payload.players) ? payload.players : [];
         const next = list
@@ -2227,9 +2240,19 @@ export class GameScene extends Phaser.Scene {
       };
       socket.on('player-left', this.onPeerGone);
       socket.on('player-disconnected', this.onPeerGone);
+      // A spectator who arrived mid-match: now that the players exist, fetch who has the
+      // egg and the scores so far (asking again is harmless on the server).
+      if (this.spectating && this.roomCode) {
+        socket.timeout(4000).emit('spectate', { roomCode: this.roomCode }, (err: unknown, res: any) => {
+          if (err || !res?.ok || this.gameOver) return;
+          if (res.egg) this.applyEggOwner(res.egg);
+          this.applyMatchScores({ stats: res.scores });
+        });
+      }
       this.events.once('shutdown', () => {
         if (this.onRemoteInput) socket.off('player-input', this.onRemoteInput);
         if (this.onEggOwner) socket.off('egg-owner', this.onEggOwner);
+        if (this.onMatchScores) socket.off('match-scores', this.onMatchScores);
         if (this.onMatchResult) socket.off('match-result', this.onMatchResult);
         if (this.onRoomRejoined) socket.off('room-rejoined', this.onRoomRejoined);
         if (this.onPowerUsed) socket.off('power-used', this.onPowerUsed);
@@ -2241,6 +2264,7 @@ export class GameScene extends Phaser.Scene {
         }
         this.onRemoteInput = undefined;
         this.onEggOwner = undefined;
+        this.onMatchScores = undefined;
         this.onMatchResult = undefined;
         this.onRoomRejoined = undefined;
         this.onPowerUsed = undefined;
@@ -2279,7 +2303,7 @@ export class GameScene extends Phaser.Scene {
         });
       }
     }
-    if (now - this.lastNetSend >= 33) {
+    if (!this.spectating && now - this.lastNetSend >= 33) {
       this.lastNetSend = now;
       const me = this.gsPlayers.find((p) => p.id === 'player');
       if (me && this.roomCode && this.localUserId) {
@@ -2499,7 +2523,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateMovement(dt: number) {
     const human = this.gsPlayers.find(p => p.id === 'player');
-    if (!human) return;
+    if (!human || this.spectating) return;
     const speedMul = human.speedBoostActive ? SPEED_BOOST_MULT : 1.0;
     const infernoMul = this.isInInfernoSlowZone(human.x, human.y, PLAYER_SIZE) ? 0.72 : 1;
     const eggMul = human.hasEgg ? EGG_HOLDER_SPEED_MULT : 1;
@@ -2577,6 +2601,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateCameraLead(dt: number) {
     const cam = this.cameras.main;
+    if (this.spectating) { this.updateSpectatorCamera(dt); return; }
     const human = this.gsPlayers.find((p) => p.id === 'player');
     if (!human || !cam || !this.cameraTarget) return;
 
@@ -2595,6 +2620,26 @@ export class GameScene extends Phaser.Scene {
     const halfH = cam.height / (2 * cam.zoom);
     this.camTargetX = Phaser.Math.Clamp(this.camTargetX, halfW, this.mapWidth - halfW);
     this.camTargetY = Phaser.Math.Clamp(this.camTargetY, halfH, this.mapHeight - halfH);
+    this.cameraTarget.setPosition(this.camTargetX, this.camTargetY);
+  }
+
+  /**
+   * Spectator camera: the player the admin picked, or by default whoever has the egg (the
+   * egg itself while it's on the ground), so a big screen always shows the action. Eased,
+   * so switching targets pans instead of cutting.
+   */
+  private updateSpectatorCamera(dt: number) {
+    const cam = this.cameras.main;
+    if (!cam || !this.cameraTarget) return;
+    const store = useGameStore.getState();
+    const picked = store.spectateFollow ? this.gsPlayers.find((p) => p.id === store.spectateFollow) : undefined;
+    const focus = picked ?? this.gsPlayers.find((p) => p.hasEgg) ?? store.eggPosition ?? this.gsPlayers.find((p) => p.id !== 'player');
+    if (!focus) return;
+    const blend = 1 - Math.exp(-4 * dt);
+    const halfW = cam.width / (2 * cam.zoom);
+    const halfH = cam.height / (2 * cam.zoom);
+    this.camTargetX = Phaser.Math.Linear(this.camTargetX, Phaser.Math.Clamp(focus.x, halfW, this.mapWidth - halfW), blend);
+    this.camTargetY = Phaser.Math.Linear(this.camTargetY, Phaser.Math.Clamp(focus.y, halfH, this.mapHeight - halfH), blend);
     this.cameraTarget.setPosition(this.camTargetX, this.camTargetY);
   }
 
@@ -2682,7 +2727,7 @@ export class GameScene extends Phaser.Scene {
     const personaColor: Record<string, string> = {
       aggressive: '#f87171', sneaky: '#a78bfa', cocky: '#fb923c', cautious: '#5fcde4',
     };
-    const dots: MinimapDot[] = this.gsPlayers.map((p) => ({
+    const dots: MinimapDot[] = this.visiblePlayers().map((p) => ({
       x: p.x,
       y: p.y,
       // Egg carrier = gold; you = green; agents = persona-tinted; other humans = white.
@@ -3186,7 +3231,7 @@ export class GameScene extends Phaser.Scene {
     };
 
     const me = this.gsPlayers.find((p) => p.id === 'player');
-    if (me) tryClaim(me);
+    if (me && !this.spectating) tryClaim(me);
     // The bot-steering client claims for the bots.
     if (this.agentAuthority) for (const b of this.gsPlayers) if (b.isBot) tryClaim(b);
   }
@@ -3279,8 +3324,9 @@ export class GameScene extends Phaser.Scene {
         holder.hasEgg = false;
         target.hasEgg = true;
         target.eggHoldCount = (target.eggHoldCount || 0) + 1;
+        target.steals = (target.steals || 0) + 1; // solo; online the server counts steals
         store.updatePlayer(holder.id, { hasEgg: false, x: holder.x, y: holder.y });
-        store.updatePlayer(target.id, { hasEgg: true, x: target.x, y: target.y, eggHoldCount: target.eggHoldCount });
+        store.updatePlayer(target.id, { hasEgg: true, x: target.x, y: target.y, eggHoldCount: target.eggHoldCount, steals: target.steals });
         store.setEgg(target.id, null);
         store.setLastEggHolderId(target.id);
         this.lastTagTime = now;
@@ -3493,7 +3539,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.currentPhase !== 'playing' || (useGameStore.getState().paused && !this.isOnlineMp)) return;
     const hp = this.gsPlayers.find((p) => p.id === 'player');
-    if (hp && hp.powerUpReady && !hp.powerUpActive && !hp.powerUpCooldown) {
+    if (hp && !this.spectating && hp.powerUpReady && !hp.powerUpActive && !hp.powerUpCooldown) {
       this.powerRequestAt = 0;
       this.activatePowerUp(hp);
     }
@@ -3752,7 +3798,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private endGame(result?: { winnerUserId: string | null; stats?: Array<{ userId: string; grabs: number; heldMs: number }> }) {
+  private endGame(result?: { winnerUserId: string | null; stats?: Array<{ userId: string; grabs: number; heldMs: number; steals?: number }> }) {
     if (this.gameOver) return;
     this.gameOver = true;
     this.matchEnded = true;
@@ -3766,7 +3812,7 @@ export class GameScene extends Phaser.Scene {
       // Online: the server's tally and verdict, so every screen agrees.
       for (const st of result.stats ?? []) {
         const p = this.playerByUserId(st.userId);
-        if (p) { p.eggHoldCount = st.grabs; p.eggHeldMs = st.heldMs; }
+        if (p) { p.eggHoldCount = st.grabs; p.eggHeldMs = st.heldMs; p.steals = st.steals ?? p.steals; }
       }
       winner = result.winnerUserId ? this.playerByUserId(result.winnerUserId) ?? null : null;
     } else {
@@ -3775,7 +3821,7 @@ export class GameScene extends Phaser.Scene {
       winner = this.gsPlayers.find((p) => p.hasEgg) ?? this.gsPlayers.find((p) => p.id === lastHolderId) ?? null;
     }
 
-    store.setPlayers(this.gsPlayers.map((p) => ({ ...p })));
+    store.setPlayers(this.visiblePlayers().map((p) => ({ ...p })));
     if (!winner) {
       store.setGameResult(null, 'Nobody grabbed the egg!');
       return;
@@ -3786,6 +3832,49 @@ export class GameScene extends Phaser.Scene {
       ? `🥚 You held the egg at the end! (${grabs} ${grabs === 1 ? 'grab' : 'grabs'})`
       : `🥚 ${winner.character.name} held the egg at the end! (${grabs} ${grabs === 1 ? 'grab' : 'grabs'})`;
     store.setGameResult(winner, msg);
+  }
+
+  /** Everyone in the match: all players, minus a spectator's hidden dino. */
+  private visiblePlayers(): Player[] {
+    return this.spectating ? this.gsPlayers.filter((p) => p.id !== 'player') : this.gsPlayers;
+  }
+
+  /** The server's running tally (online): time held, steals and grabs for everyone. */
+  private applyMatchScores(payload: any) {
+    if (this.gameOver || !Array.isArray(payload?.stats)) return;
+    for (const st of payload.stats) {
+      const p = typeof st?.userId === 'string' ? this.playerByUserId(st.userId) : undefined;
+      if (!p) continue;
+      // The holder's time keeps ticking locally between tallies (see update()).
+      p.eggHeldMs = Number(st.heldMs) || 0;
+      p.steals = Number(st.steals) || 0;
+      p.eggHoldCount = Number(st.grabs) || 0;
+    }
+  }
+
+  /** Publish the live leaderboard to the HUD a few times a second, only when it changes. */
+  private updateScoreboard(now: number) {
+    if (now - this.lastScoreboardAt < 250) return;
+    this.lastScoreboardAt = now;
+    const roster: any[] = useGameStore.getState().roomPlayers || [];
+    const rows: ScoreRow[] = this.visiblePlayers().map((p) => {
+      const heldMs = p.eggHeldMs ?? 0;
+      const steals = p.steals ?? 0;
+      const named = p.isBot ? undefined : roster.find((r) => r.user_id === p.userId)?.player_name;
+      return {
+        id: p.id,
+        name: p.id === 'player' ? 'You' : named || p.character.name,
+        points: matchPoints(heldMs, steals, false),
+        heldS: Math.floor(heldMs / 1000),
+        steals,
+        hasEgg: !!p.hasEgg,
+        isSelf: p.id === 'player',
+      };
+    });
+    const key = JSON.stringify(rows);
+    if (key === this.lastScoreboardKey) return;
+    this.lastScoreboardKey = key;
+    useGameStore.getState().setScoreboard(rows);
   }
 
   private playerByUserId(userId: string): Player | undefined {

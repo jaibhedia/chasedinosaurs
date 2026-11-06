@@ -45,3 +45,25 @@ services:
         sync: false
       - key: AI_MODEL
         sync: false
+
+      # --- All-time leaderboard ------------------------------------------------
+      # Kept in Upstash Redis when both of these are set (free tier at upstash.com: create a
+      # Redis database, then copy its REST URL and token). /health shows
+      # leaderboard.store = "upstash" once they're picked up.
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      # SECRET.
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      # Without Upstash: the folder for leaderboard.json (default: ./data). The free plan wipes
+      # it on every restart, deploy and idle sleep; it only lasts on a paid plan's persistent disk.
+      - key: DATA_DIR
+        sync: false
+
+      # --- Admin spectator mode (/admin) ------------------------------------------
+      # Comma-separated admin emails. Unset: nobody can spectate.
+      - key: ADMIN_EMAILS
+        sync: false
+      # SECRET. Required alongside the email; without it, an email alone gets in.
+      - key: ADMIN_PASSCODE
+        sync: false

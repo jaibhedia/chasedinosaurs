@@ -9,13 +9,14 @@ import VoiceChat from '@/components/VoiceChat';
 import GameMenu from '@/components/GameMenu';
 import NetStats from '@/components/NetStats';
 import { CoachHints } from '@/components/CoachHints';
+import { startGamepad } from '@/lib/gamepadInput';
 
 export interface GameProps {
   onGameEnd: () => void;
 }
 
 export function Game({ onGameEnd }: GameProps) {
-  const { gamePhase, countdownTimer, players, userId } = useGameStore();
+  const { gamePhase, countdownTimer, players, userId, spectating } = useGameStore();
   const endedRef = useRef(false);
 
   const currentPlayer = players.find(
@@ -43,6 +44,9 @@ export function Game({ onGameEnd }: GameProps) {
     };
   }, []);
 
+  // Xbox / standard controllers drive the same input channel as the touch controls.
+  useEffect(() => startGamepad(), []);
+
   // On match end, hold the "time's up" beat briefly so the final grab registers, then
   // hand off to the results screen.
   useEffect(() => {
@@ -58,9 +62,11 @@ export function Game({ onGameEnd }: GameProps) {
     >
       <NetStats />
       <GameHUD />
-      <CoachHints />
+      {/* A spectator gets no coaching, no controls, and never joins voice: its mic must not
+          open into a room it isn't playing in. */}
+      {!spectating && <CoachHints />}
       <ConnectionStatus />
-      <VoiceChat />
+      {!spectating && <VoiceChat />}
       <GameMenu />
       <div className="absolute inset-0 w-full h-full">
         <GameCanvas />
@@ -102,12 +108,14 @@ export function Game({ onGameEnd }: GameProps) {
         )}
       </AnimatePresence>
 
-      <MobileControls
-        powerUpReady={powerUpReady}
-        powerUpActive={powerUpActive}
-        powerUpCooldown={powerUpCooldown}
-        powerUpCooldownMax={powerUpCooldownMax}
-      />
+      {!spectating && (
+        <MobileControls
+          powerUpReady={powerUpReady}
+          powerUpActive={powerUpActive}
+          powerUpCooldown={powerUpCooldown}
+          powerUpCooldownMax={powerUpCooldownMax}
+        />
+      )}
     </main>
   );
 }

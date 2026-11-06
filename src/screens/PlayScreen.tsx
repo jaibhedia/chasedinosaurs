@@ -41,5 +41,7 @@ export default function PlayScreen() {
 
   if (!ready) return null;
 
-  return <Game key={location.key} onGameEnd={() => navigate('/results', { replace: true })} />;
+  // An admin spectator goes back to the room's page to wait for its next match.
+  const onGameEnd = () => navigate(useGameStore.getState().spectating ? '/admin' : '/results', { replace: true });
+  return <Game key={location.key} onGameEnd={onGameEnd} />;
 }

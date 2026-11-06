@@ -11,6 +11,7 @@ import { clearMatchConfig, saveMatchConfig } from '@/lib/matchConfig';
 import { cannedRoast, type MatchRow } from '@/scene/botVoice';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { shareCard } from '@/lib/shareCard';
+import { matchPoints } from '@/lib/scoring';
 
 const CONFETTI = ['#fbbf24', '#f59e0b', '#ef4444', '#ec4899', '#a855f7'];
 
@@ -58,14 +59,13 @@ export default function Results() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The winner is #1 by definition; everyone else by how often they got the egg.
+  // Ranked by points: a second with the egg, 5 a steal, 30 for holding it at the buzzer.
+  // Ties go to the winner.
   const ranked = useMemo(
     () =>
-      [...players]
-        .sort((a, b) => {
-          const score = (p: typeof a) => (p.eggHoldCount ?? 0) + (p.id === winner?.id ? 1_000_000 : 0);
-          return score(b) - score(a);
-        })
+      players
+        .map((p) => ({ ...p, points: matchPoints(p.eggHeldMs ?? 0, p.steals ?? 0, p.id === winner?.id) }))
+        .sort((a, b) => b.points - a.points || Number(b.id === winner?.id) - Number(a.id === winner?.id))
         .map((p, i) => ({ ...p, rank: i + 1 })),
     [players, winner?.id],
   );
@@ -254,20 +254,24 @@ export default function Results() {
               </div>
               <div className="flex items-center gap-2 md:gap-4 shrink-0">
                 <div className="text-center">
-                  <p className="text-[10px] md:text-xs text-gray-300 uppercase leading-none">Grabs</p>
-                  <p className="text-base md:text-2xl short:text-base font-black text-amber-300 leading-tight">{p.eggHoldCount ?? 0}</p>
+                  <p className="text-[10px] md:text-xs text-gray-300 uppercase leading-none">Points</p>
+                  <p className="text-base md:text-2xl short:text-base font-black text-[#ffc93c] leading-tight" data-testid="results-points">{p.points}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-[10px] md:text-xs text-gray-300 uppercase leading-none">Held</p>
-                  <p className="text-base md:text-2xl short:text-base font-black text-amber-300 leading-tight">{Math.round((p.eggHeldMs ?? 0) / 1000)}s</p>
+                  <p className="text-base md:text-2xl short:text-base font-black text-amber-300 leading-tight">{Math.floor((p.eggHeldMs ?? 0) / 1000)}s</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] md:text-xs text-gray-300 uppercase leading-none">Steals</p>
+                  <p className="text-base md:text-2xl short:text-base font-black text-amber-300 leading-tight">{p.steals ?? 0}</p>
                 </div>
                 <p className="hidden lg:block text-sm font-black uppercase text-[#f4e7c3] min-w-[90px] text-right">
                   {p.id === winner?.id ? (
                     <span className="inline-flex items-center gap-1 text-[#ffc93c]"><Trophy className="w-4 h-4" /> Winner</span>
-                  ) : (p.eggHoldCount ?? 0) >= 3 ? (
+                  ) : (p.steals ?? 0) >= 3 ? (
                     <span className="inline-flex items-center gap-1"><Star className="w-4 h-4" /> Thief</span>
                   ) : (p.eggHoldCount ?? 0) > 0 ? (
-                    <span className="inline-flex items-center gap-1"><ThumbsUp className="w-4 h-4" /> Stole it</span>
+                    <span className="inline-flex items-center gap-1"><ThumbsUp className="w-4 h-4" /> {(p.steals ?? 0) > 0 ? 'Stole it' : 'Held it'}</span>
                   ) : (
                     <span className="inline-flex items-center gap-1 opacity-60"><Skull className="w-4 h-4" /> Never held</span>
                   )}
@@ -276,7 +280,7 @@ export default function Results() {
             </div>
           ))}
           <p className="pt-0.5 text-[#f4e7c3]/80 text-sm short:text-xs text-center">
-            Whoever holds the egg when the <span className="text-[#ffc93c] font-bold">timer hits zero</span> wins.
+            1 point a second with the egg · 5 a steal · <span className="text-[#ffc93c] font-bold">30 for holding it when the timer hits zero</span>.
           </p>
         </div>
       </div>

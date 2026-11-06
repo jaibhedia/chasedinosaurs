@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Heart, Play, Send, ShoppingBag, Twitter } from 'lucide-react';
+import { Heart, Play, Send, Settings, ShoppingBag, Trophy, Twitter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGameStore } from '@/store/gameStore';
 import { usePageTitle } from '@/hooks/usePageTitle';
@@ -30,6 +30,20 @@ export default function Home() {
           style={{ imageRendering: 'pixelated' }}
         />
       </div>
+
+      {/* Top right, clear of the logo: the bottom row has no room left on a landscape phone. */}
+      <Link
+        to="/settings"
+        className="absolute z-10 h-10 sm:h-12 short:h-10 pixel-button flex items-center gap-2 !px-3 !py-0 text-xs sm:text-sm short:text-xs opacity-90 hover:opacity-100 transition-opacity"
+        style={{
+          top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)',
+          right: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)',
+        }}
+        data-testid="home-settings"
+      >
+        <Settings className="w-4 h-4 sm:w-5 sm:h-5 short:w-4 short:h-4 text-[#5fcde4]" />
+        Settings
+      </Link>
 
       <div className="flex-1" />
       <div
@@ -76,6 +90,14 @@ export default function Home() {
           >
             <Twitter className="w-4 h-4 sm:w-6 sm:h-6 short:w-4 short:h-4" />
           </a>
+          <Link
+            to="/leaderboard"
+            className="h-10 sm:h-14 short:h-10 pixel-button flex items-center gap-2 !px-3 sm:!px-4 !py-0 text-xs sm:text-sm short:text-xs opacity-90 hover:opacity-100 transition-opacity"
+            data-testid="home-leaderboard"
+          >
+            <Trophy className="w-4 h-4 sm:w-5 sm:h-5 short:w-4 short:h-4 text-[#ffc93c]" />
+            Leaderboard
+          </Link>
           <Link
             to="/support"
             className="h-10 sm:h-14 short:h-10 pixel-button flex items-center gap-2 !px-3 sm:!px-4 !py-0 text-xs sm:text-sm short:text-xs opacity-90 hover:opacity-100 transition-opacity"

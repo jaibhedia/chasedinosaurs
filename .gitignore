@@ -51,3 +51,6 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
+
+# All-time leaderboard written by the server (DATA_DIR)
+server/data/
