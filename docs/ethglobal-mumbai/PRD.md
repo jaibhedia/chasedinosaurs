@@ -1,6 +1,6 @@
 # Chase Dinosaurs · ETHGlobal Mumbai 2026 · PRD
 
-> A living document, updated after every feature push. Last update: 2026-11-06 19:55 IST at `8e41853`.
+> A living document, updated after every feature push. Last update: 2026-11-06 20:05 IST at `4e3ef74`.
 > Plan and build log: [PLAN.md](PLAN.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md)
 
 ## 1. Summary
@@ -50,7 +50,7 @@ Status: Planned → Building → Shipped, or Cut (with the reason in §9).
 |---|---|---|---|---|---|---|---|---|
 | F1 | Admin-only spectator mode | Organisers put any live match on a big screen | Sign-in at `/admin` needs an allowlisted email (`ADMIN_EMAILS`) and the passcode (`ADMIN_PASSCODE`), and everyone else is refused. Admins see the live rooms and can watch one, even mid-match. The spectator takes no seat, has no dino, and can't claim the egg or steer bots. The camera follows the egg or a chosen player, and the live board shows. | Tech, UX, WOW | — | A match on the projector, camera tracking the egg | Shipped | `98352cf`, `532d8f1`, `a360b12` |
 | F2 | Points and live match leaderboard | Every second with the egg counts, not just the last one | Holding the egg scores 1 point a second. A steal (taking it from another player, not the first pickup) scores 5, and the winner gets 30. The in-match board updates within 1 s for every player, solo and online, bots included. Online numbers come from the server. The results screen shows points with the breakdown. | Tech, Pract, UX | — | The board reshuffling live after a steal | Shipped | `5ae683a`, `ee51eb0` |
-| F3 | All-time leaderboard | A reason to come back and beat a best | Three tabs: Longest egg hold and Most steals (each player's best single match, not a sum) and Wins. Online, server-verified matches only, with humans only. It survives a server restart. | Pract, WOW | — | Three tabs, your name highlighted | Shipped | `6f37c94`, `17be8bb` |
+| F3 | All-time leaderboard | A reason to come back and beat a best | Three tabs: Longest egg hold and Most steals (each player's best single match, not a sum) and Wins. Online, server-verified matches only, with humans only. It survives deploys, restarts and idle sleeps (saved to Upstash Redis). | Pract, WOW | — | Three tabs, your name highlighted | Shipped | `6f37c94`, `17be8bb`, `ee10c4a` |
 | F4 | Xbox controller on PC | Play at the booth from a couch | The left stick or D-pad moves (analog). A, RB or RT fires the power, Start opens the menu and B closes it. Works with any standard-mapping pad in Chrome, Edge or Firefox, plugged in at any time. | UX | — | Playing with a pad | Shipped | `ec97817` |
 | F5 | Stick on either side (phones) | Left-handed players aren't stuck | The stick goes left or right and the power button takes the other side. The choice is set in the in-game menu and remembered on the device. | UX | — | Flip it mid-match | Shipped | `4631219` |
 | F6 | Controls in Settings | Players can see the controls for their device, and check a pad works, before or during a match | Home has a Settings button, and the in-game menu has Controls. Both show three tabs (Keyboard & mouse, Controller, Phone) that match the real bindings, and open on the tab for the device in use. A held key or pad button lights up its row, and the Controller tab names the connected pad and moves a dot with the stick. The Phone tab sets the stick side (F5) with a preview. | UX, Pract | — | Plug in a pad, press A: the Power row lights up | Shipped | `343f614`, `315ab00`, `3b3d2ea` |
@@ -98,11 +98,11 @@ swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive
   single-match points, so the per-match rule still settles ties. A single match gives 0 or 1, so a
   best-match wins board would put every winner at 1. Karmanya can still overrule it; it's a
   one-line change.
-- The leaderboard file lives on the server's own disk. On Render's free plan that disk is wiped
-  on every deploy and restart, and whenever the service sleeps after 15 minutes without traffic.
-  Free services can't have a persistent disk. Fix: the Starter plan ($7/month) plus a 1 GB disk
-  ($0.25/month) with `DATA_DIR` set to its mount path, which also ends the ~1-minute wake-up.
-  Or move the board to a database. · Shantanu · before the event
+- ~~The leaderboard file is wiped by Render's free plan.~~ Fixed in `ee10c4a` (P4): with
+  `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` set, the board lives in a free Upstash
+  Redis database and survives deploys, restarts and idle sleeps. Still open: the free server sleeps
+  after 15 idle minutes, and the next player waits about a minute. The Starter plan ($7/month)
+  or a free uptime check on `/health` keeps it awake. · Shantanu · set the two vars on Render
 - Email-only admin isn't proof of identity, so a passcode is also required. · Shantanu · set
   `ADMIN_PASSCODE`
 
@@ -112,3 +112,4 @@ swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive
 - 2026-11-06 18:10 IST · F6 (controls in Settings) added from Karmanya's full message (P2).
 - 2026-11-06 19:55 IST · Partner picks re-ranked against the prize rules: Arc in, Arkiv out on its
   open-source requirement. Wins decided (P3).
+- 2026-11-06 20:05 IST · F3 now keeps the board in Upstash Redis instead of a paid disk (P4).

@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 9h 26m to freeze, 13h 26m to the deadline (2026-11-06 19:33 IST)
+> ⏱ Time left at last update: 8h 56m to freeze, 12h 56m to the deadline (2026-11-06 20:03 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: 3b3d2ea -->
+<!-- last-logged: 4e3ef74 -->
 
 ## Eligibility gates
 
@@ -42,9 +42,11 @@ view, because the spectator shows the live board.
 - [ ] Merge PR #6 with a **merge commit**. Vercel deploys the web app and Render the server.
 - [ ] Render env: `ADMIN_EMAILS` (comma-separated) and `ADMIN_PASSCODE`. Without the emails
   nobody can spectate.
-- [ ] Optional: the Starter plan ($7/month) plus a 1 GB persistent disk, with `DATA_DIR` set to
-  its mount path, so the all-time board survives deploys, restarts and idle sleeps. Free services
-  can't have a disk and wipe their files when they sleep after 15 idle minutes.
+- [ ] Leaderboard storage (free): at upstash.com create a Redis database, copy its REST URL and
+  token into Render's Environment as `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, then
+  open `<server>/health` and check `leaderboard.store` is `"upstash"`
+- [ ] Optional: stop the ~1-minute wake-up after 15 idle minutes, with the Starter plan
+  ($7/month) or a free uptime check that loads `/health` every 10 minutes
 - [ ] On the live site, check that:
   - points tick, and a steal adds 5
   - `/leaderboard` updates after an online match
@@ -237,6 +239,30 @@ One entry per push, oldest first, written by the post-push routine.
 - **Next / known issues:**
   - Bindings can't be changed (out of scope, PRD §7).
   - The pad still can't move through menus outside a match.
+
+### F3 fix · The all-time board survives restarts · Shipped · 2026-11-06 20:03 IST
+- **Commits:** `ee10c4a`, `4e3ef74` · PR #6
+- **Files:** `server/src/leaderboard.ts`, `server/src/leaderboard.test.ts`, `server/src/index.ts`,
+  `render.yaml`, `server/.env.example` · +220/−24
+- **New vs reused:**
+  - New: Upstash Redis storage over its REST API (no new dependency), loading that retries and
+    merges, a flush on SIGTERM, and the store in `/health`.
+  - Reused: F3's in-memory board, with the `DATA_DIR` file as the fallback.
+- **AI:** Claude Code (Opus 5.5) picked Upstash and wrote it and the tests. **Human:** Shantanu
+  asked for an alternative to `DATA_DIR` instead of a paid disk (P4).
+- **Challenge:** a remote store can be unreachable for a moment at startup. If the server then
+  saved its empty board, it would wipe the real one. Saves now wait until the stored board has been
+  read, reads retry, and matches that finish meanwhile are merged in (the best of each best, with
+  wins and matches added).
+- **Verified:**
+  - Server tests 11/11, including a new one against a stand-in Upstash: a failed read writes
+    nothing, the retry merges both sides, and the token is sent. Typecheck and `npm run build` ✅.
+  - The real server reports `store: upstash` on `/health`, and falls back to the file without the
+    variables. A match recorded 0.3 s before SIGTERM reached the store through the `tsx` launcher.
+  - Not yet run against a real Upstash database: creating a throwaway one was blocked by a
+    permission check.
+- **Next / known issues:** set the two variables on Render. The free server still sleeps after
+  15 idle minutes (PRD §8).
 
 ## Submission checklist
 

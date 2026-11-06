@@ -63,13 +63,14 @@ AI role:
 | `src/lib/haptics.ts` | F4 | generated | Asked for the feature (P1) |
 | `server/src/match.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `server/src/match.test.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
-| `server/src/index.ts` | F2, F3, F1 | generated | Asked for the features; the admin identity plan is email now, wallet later (P1) |
-| `server/src/leaderboard.ts` | F3 | generated | Board rules by Karmanya: best single match, not sums (P1) |
-| `server/src/leaderboard.test.ts` | F3 | generated | Board rules by Karmanya (P1) |
+| `server/src/index.ts` | F2, F3, F1 | generated | Asked for the features; the admin identity plan is email now, wallet later (P1); an alternative to DATA_DIR (P4) |
+| `server/src/leaderboard.ts` | F3 | generated | Board rules by Karmanya: best single match, not sums (P1). Asked for storage other than DATA_DIR (P4) |
+| `server/src/leaderboard.test.ts` | F3 | generated | Board rules by Karmanya (P1); storage other than DATA_DIR (P4) |
 | `src/screens/Leaderboard.tsx` | F3 | generated | Three boards asked for by Karmanya (P1) |
 | `src/App.tsx` | F3, F1, F6 | generated | Asked for the features (P1, P2) |
 | `src/screens/Home.tsx` | F3, F6 | generated | Asked for the features (P1, P2) |
-| `render.yaml` | F3, F1 | generated | Asked for the features (P1) |
+| `render.yaml` | F3, F1 | generated | Asked for the features (P1, P4) |
+| `server/.env.example` | F3, F1 | generated | Asked for storage other than DATA_DIR (P4) |
 | `src/screens/Admin.tsx` | F1 | generated | Admin-only spectating, email identity for now (P1) |
 | `src/lib/adminSession.ts` | F1 | generated | Admin-only spectating, email identity for now (P1) |
 | `src/screens/PlayScreen.tsx` | F1 | generated | Asked for the feature (P1) |
@@ -155,3 +156,7 @@ messages are the same as in P1 and are elided here.
 >
 > and what is "ender's free plan wipes the all-time leaderboard on every restart or deploy.
 > Attach a disk and set DATA_DIR, or accept the resets."
+
+### P4 · 2026-11-06, about 19:58 IST · storage other than DATA_DIR
+
+> give me alternate for the data_dir!
