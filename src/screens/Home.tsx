@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Heart, Play, Send, ShoppingBag, Twitter } from 'lucide-react';
+import { Heart, Play, Send, ShoppingBag, Trophy, Twitter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGameStore } from '@/store/gameStore';
 import { usePageTitle } from '@/hooks/usePageTitle';
@@ -76,6 +76,14 @@ export default function Home() {
           >
             <Twitter className="w-4 h-4 sm:w-6 sm:h-6 short:w-4 short:h-4" />
           </a>
+          <Link
+            to="/leaderboard"
+            className="h-10 sm:h-14 short:h-10 pixel-button flex items-center gap-2 !px-3 sm:!px-4 !py-0 text-xs sm:text-sm short:text-xs opacity-90 hover:opacity-100 transition-opacity"
+            data-testid="home-leaderboard"
+          >
+            <Trophy className="w-4 h-4 sm:w-5 sm:h-5 short:w-4 short:h-4 text-[#ffc93c]" />
+            Leaderboard
+          </Link>
           <Link
             to="/support"
             className="h-10 sm:h-14 short:h-10 pixel-button flex items-center gap-2 !px-3 sm:!px-4 !py-0 text-xs sm:text-sm short:text-xs opacity-90 hover:opacity-100 transition-opacity"
