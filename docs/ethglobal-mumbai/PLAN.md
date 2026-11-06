@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 12h 34m to freeze, 16h 34m to the deadline (2026-11-06 16:26 IST)
+> ⏱ Time left at last update: 12h 24m to freeze, 16h 24m to the deadline (2026-11-06 16:35 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: 17be8bb -->
+<!-- last-logged: a360b12 -->
 
 ## Eligibility gates
 
@@ -34,7 +34,20 @@ view, because the spectator shows the live board.
 | 2 | F4 | Gamepad polling into the shared touch-input channel; Start/B for the menu | 25 min | Shipped |
 | 3 | F2 | Server: steals and points in `Match`, a 1 s `match-scores` broadcast. Client: a live board in the HUD and points on the results screen | 45 min | Shipped |
 | 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Shipped |
-| 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Planned |
+| 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Shipped |
+
+## Event go-live (today)
+
+- [ ] Merge PR #6 with a **merge commit**. Vercel deploys the web app and Render the server.
+- [ ] Render env: `ADMIN_EMAILS` (comma-separated) and `ADMIN_PASSCODE`. Without the emails
+  nobody can spectate.
+- [ ] Optional: a persistent disk with `DATA_DIR` set to its mount path, so the all-time board
+  survives restarts and deploys
+- [ ] On the live site, check that:
+  - points tick, and a steal adds 5
+  - `/leaderboard` updates after an online match
+  - `/admin` sign-in and Watch work
+- [ ] Try an Xbox pad on a PC, and the stick-side toggle on a phone
 
 ## How we commit
 
@@ -138,6 +151,53 @@ One entry per push, oldest first, written by the post-push routine.
   - Wins is a total count, since one match can only give 0 or 1 (asked in PRD §8).
   - Render's free disk resets on deploy (PRD §8).
   - Solo matches don't count.
+
+### F1 · Admin-only spectator mode · Shipped · 2026-11-06 16:35 IST
+- **Commits:** `98352cf` (server), `532d8f1` (scene), `a360b12` (admin screen and HUD) · PR #6
+- **Files:**
+  - Server: `server/src/index.ts`, `render.yaml`
+  - Scene and store: `src/scene/gameScene.ts`, `src/store/gameStore.ts`
+  - Admin UI: `src/screens/Admin.tsx` (new), `src/lib/adminSession.ts` (new), `src/App.tsx`,
+    `src/screens/PlayScreen.tsx`, `src/components/RoomWatcher.tsx`,
+    `src/providers/SocketProvider.tsx`, `src/components/Game.tsx`,
+    `src/components/GameHUD.tsx`, `src/components/GameMenu.tsx`
+  - Size: +493/−34
+- **New vs reused:**
+  - New:
+    - admin sign-in: an `ADMIN_EMAILS` allowlist plus `ADMIN_PASSCODE`, compared in constant
+      time and rate limited
+    - `admin-rooms` and `spectate`, and the `/admin` screen
+    - the scene's spectator mode, with a follow camera and HUD follow buttons
+    - re-spectating after a reconnect
+  - Reused:
+    - Socket.IO room broadcasts: a spectator is a socket in the room that isn't on the roster
+    - the existing `isRoomMember` guard, which now also locks spectators out of gameplay
+      events
+    - `RoomWatcher`'s pull into each new match, and the scene's multiplayer path
+- **AI:** Claude Code (Opus 5.5) wrote it, including the passcode: an email alone isn't proof
+  of identity, so the passcode is checked whenever it's set. **Human:** Shantanu asked for an
+  admin-only spectator mode, identified by email now and by wallet address later (P1).
+- **Challenge:** the scene is built around "my dino", and a spectator has none to play. The
+  spectator keeps a hidden local dino, and every path that would act on it is gated:
+  movement, input packets, egg claims, powers, bot steering (including both takeover paths),
+  the minimap, the board and the results. A mid-match join re-syncs the egg and scores once
+  the scene has loaded. Voice is off for spectators, because the server's `voice-join`
+  doesn't check room membership.
+- **Verified:**
+  - Smoke test against a local server, 14/14 checks:
+    - a wrong passcode and an unknown email are refused
+    - spectating is refused before sign-in
+    - the spectator gets game-started, the egg handoff and live scores
+    - its own egg claim and input are ignored, and it never appears in the scores
+    - a mid-match re-sync returns the egg and the scores
+    - `/leaderboard` leaks no user ids
+  - `npm run build` ✅. Not yet watched in a browser.
+- **Next / known issues:**
+  - Refreshing mid-watch goes home, since the sign-in lives in memory.
+  - Watch from a different browser profile from any player's, because a profile shares one
+    user id.
+  - Before this event, the server's `voice-join` already let anyone with a room code join
+    that room's voice. Not fixed here.
 
 ## Submission checklist
 

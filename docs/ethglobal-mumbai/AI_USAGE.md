@@ -52,27 +52,32 @@ AI role:
 | `.claude/skills/ethglobal-mumbai/` | Setup | generated | Specified the workflow and supplied the rules (P0) |
 | `docs/ethglobal-mumbai/` | Setup | generated | Directed the content (P0, P1) |
 | `README.md` | Setup | generated | The Mumbai section, written to P0's disclosure requirement |
-| `src/store/gameStore.ts` | F5, F2 | generated | Asked for the features (P1) |
+| `src/store/gameStore.ts` | F5, F2, F1 | generated | Asked for the features (P1) |
 | `src/components/MobileControls.tsx` | F5 | generated | Asked for the feature (P1) |
-| `src/components/GameMenu.tsx` | F5 | generated | Asked for the feature (P1) |
+| `src/components/GameMenu.tsx` | F5, F1 | generated | Asked for the features (P1) |
 | `src/lib/gamepadInput.ts` | F4 | generated | Asked for the feature (P1) |
 | `src/hooks/useGamepadConnected.ts` | F4 | generated | Asked for the feature (P1) |
-| `src/components/Game.tsx` | F4 | generated | Asked for the feature (P1) |
-| `src/components/GameHUD.tsx` | F4, F2 | generated | Asked for the features (P1) |
+| `src/components/Game.tsx` | F4, F1 | generated | Asked for the features (P1) |
+| `src/components/GameHUD.tsx` | F4, F2, F1 | generated | Asked for the features (P1) |
 | `src/lib/haptics.ts` | F4 | generated | Asked for the feature (P1) |
 | `server/src/match.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `server/src/match.test.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
-| `server/src/index.ts` | F2, F3 | generated | Asked for the features (P1) |
+| `server/src/index.ts` | F2, F3, F1 | generated | Asked for the features; the admin identity plan is email now, wallet later (P1) |
 | `server/src/leaderboard.ts` | F3 | generated | Board rules by Karmanya: best single match, not sums (P1) |
 | `server/src/leaderboard.test.ts` | F3 | generated | Board rules by Karmanya (P1) |
 | `src/screens/Leaderboard.tsx` | F3 | generated | Three boards asked for by Karmanya (P1) |
-| `src/App.tsx` | F3 | generated | Asked for the feature (P1) |
+| `src/App.tsx` | F3, F1 | generated | Asked for the features (P1) |
 | `src/screens/Home.tsx` | F3 | generated | Asked for the feature (P1) |
-| `render.yaml` | F3 | generated | Asked for the feature (P1) |
+| `render.yaml` | F3, F1 | generated | Asked for the features (P1) |
+| `src/screens/Admin.tsx` | F1 | generated | Admin-only spectating, email identity for now (P1) |
+| `src/lib/adminSession.ts` | F1 | generated | Admin-only spectating, email identity for now (P1) |
+| `src/screens/PlayScreen.tsx` | F1 | generated | Asked for the feature (P1) |
+| `src/components/RoomWatcher.tsx` | F1 | generated | Asked for the feature (P1) |
+| `src/providers/SocketProvider.tsx` | F1 | generated | Asked for the feature (P1) |
 | `.gitignore` | F3 | generated | Asked for the feature (P1) |
 | `src/lib/scoring.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `src/components/LiveScoreboard.tsx` | F2 | generated | Live per-match board asked for by Karmanya (P1) |
-| `src/scene/gameScene.ts` | F2 | generated | Asked to build on the existing system rather than overhaul it (P1) |
+| `src/scene/gameScene.ts` | F2, F1 | generated | Asked to build on the existing system rather than overhaul it (P1) |
 | `src/screens/Results.tsx` | F2 | generated | Asked for the feature (P1) |
 
 ## Pre-existing work (before the baseline)

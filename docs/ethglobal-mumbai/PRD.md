@@ -1,6 +1,6 @@
 # Chase Dinosaurs · ETHGlobal Mumbai 2026 · PRD
 
-> A living document, updated after every feature push. Last update: 2026-11-06 16:26 IST at `17be8bb`.
+> A living document, updated after every feature push. Last update: 2026-11-06 16:35 IST at `a360b12`.
 > Plan and build log: [PLAN.md](PLAN.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md)
 
 ## 1. Summary
@@ -47,7 +47,7 @@ Status: Planned → Building → Shipped, or Cut (with the reason in §9).
 
 | ID | Feature | User value | Acceptance criteria | Criteria served | Partner | Demo beat | Status | Shipped in |
 |---|---|---|---|---|---|---|---|---|
-| F1 | Admin-only spectator mode | Organisers put any live match on a big screen | Sign-in at `/admin` needs an allowlisted email (`ADMIN_EMAILS`) and the passcode (`ADMIN_PASSCODE`), and everyone else is refused. Admins see the live rooms and can watch one, even mid-match. The spectator takes no seat, has no dino, and can't claim the egg or steer bots. The camera follows the egg or a chosen player, and the live board shows. | Tech, UX, WOW | — | A match on the projector, camera tracking the egg | Planned | — |
+| F1 | Admin-only spectator mode | Organisers put any live match on a big screen | Sign-in at `/admin` needs an allowlisted email (`ADMIN_EMAILS`) and the passcode (`ADMIN_PASSCODE`), and everyone else is refused. Admins see the live rooms and can watch one, even mid-match. The spectator takes no seat, has no dino, and can't claim the egg or steer bots. The camera follows the egg or a chosen player, and the live board shows. | Tech, UX, WOW | — | A match on the projector, camera tracking the egg | Shipped | `98352cf`, `532d8f1`, `a360b12` |
 | F2 | Points and live match leaderboard | Every second with the egg counts, not just the last one | Holding the egg scores 1 point a second. A steal (taking it from another player, not the first pickup) scores 5, and the winner gets 30. The in-match board updates within 1 s for every player, solo and online, bots included. Online numbers come from the server. The results screen shows points with the breakdown. | Tech, Pract, UX | — | The board reshuffling live after a steal | Shipped | `5ae683a`, `ee51eb0` |
 | F3 | All-time leaderboard | A reason to come back and beat a best | Three tabs: Longest egg hold and Most steals (each player's best single match, not a sum) and Wins. Online, server-verified matches only, with humans only. It survives a server restart. | Pract, WOW | — | Three tabs, your name highlighted | Shipped | `6f37c94`, `17be8bb` |
 | F4 | Xbox controller on PC | Play at the booth from a couch | The left stick or D-pad moves (analog). A, RB or RT fires the power, Start opens the menu and B closes it. Works with any standard-mapping pad in Chrome, Edge or Firefox, plugged in at any time. | UX | — | Playing with a pad | Shipped | `ec97817` |
