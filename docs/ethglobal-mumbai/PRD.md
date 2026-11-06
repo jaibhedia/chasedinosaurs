@@ -1,6 +1,6 @@
 # Chase Dinosaurs · ETHGlobal Mumbai 2026 · PRD
 
-> A living document, updated after every feature push. Last update: 2026-11-06 20:30 IST at `beb935f`.
+> A living document, updated after every feature push. Last update: 2026-11-06 22:15 IST at `9635ddf`.
 > Plan and build log: [PLAN.md](PLAN.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md)
 
 ## 1. Summary
@@ -11,7 +11,9 @@ happens. An all-time board keeps each player's best single match. An admin-only 
 lets organisers put any live match on a big screen. Xbox controllers work on PC, and phone
 players can put the stick on either side. A Settings screen shows the controls for keyboard and
 mouse, controller and phone, and lights up whatever you press, so a player can check a pad
-before a match. Wallet identity replaces email for admins when the Web3 layer lands.
+before a match. Only verified humans (World ID) rank on the all-time board, one row per person,
+and the bots' AI runs on 0G Compute with a receipt for every line. Wallet identity replaces email
+for admins when the Web3 layer lands.
 
 ## 2. Track and what counts as new
 
@@ -54,6 +56,8 @@ Status: Planned → Building → Shipped, or Cut (with the reason in §9).
 | F4 | Xbox controller on PC | Play at the booth from a couch | The left stick or D-pad moves (analog). A, RB or RT fires the power, Start opens the menu and B closes it. Works with any standard-mapping pad in Chrome, Edge or Firefox, plugged in at any time. | UX | — | Playing with a pad | Shipped | `ec97817` |
 | F5 | Stick on either side (phones) | Left-handed players aren't stuck | The stick goes left or right and the power button takes the other side. The choice is set in the in-game menu and remembered on the device. | UX | — | Flip it mid-match | Shipped | `4631219` |
 | F6 | Controls in Settings | Players can see the controls for their device, and check a pad works, before or during a match | Home has a Settings button, and the in-game menu has Controls. Both show three tabs (Keyboard & mouse, Controller, Phone) that match the real bindings, and open on the tab for the device in use. A held key or pad button lights up its row, and the Controller tab names the connected pad and moves a dot with the stick. The Phone tab sets the stick side (F5) with a preview. | UX, Pract | — | Plug in a pad, press A: the Power row lights up | Shipped | `343f614`, `315ab00`, `3b3d2ea`, `beb935f` |
+| F7 | Verified humans on the all-time board | A board people can trust: one person, one row | With the `WORLD_*` settings, only players verified with World ID rank on the all-time boards. The credential is Selfie Check; Proof of Human is also accepted. A Verify panel on `/leaderboard` opens World's widget. The server signs each request, sends the proof to World's `/api/v4/verify` and stores the nullifier. A second profile from the same World ID is refused ("One person, one row"), and cancelling keeps you playing unranked. Without the settings the board is unchanged. | Tech, Pract | World | Verify on a phone, then the board shows you | Shipped (needs settings) | `cfd68cc`, `2e74e23`, `6df6d83` |
+| F8 | 0G Compute receipts for the bots' AI | The bots' banter runs on decentralized compute, and each line can be traced | With `AI_BASE_URL` on the 0G Compute Router, every bot line and roast keeps a receipt from `x_0g_trace` (request id, provider address). `/ai/receipts` lists them, and the results screen shows "Written on 0G Compute · request …" under the roast. Other providers are unaffected. | Tech, WOW | 0G | The receipt under the roast, then `/ai/receipts` | Shipped (needs settings) | `3967eaa`, `4a78f68`, `9635ddf` |
 
 ## 5. Partner prizes
 
@@ -64,9 +68,9 @@ Partner notes while integrating.
 
 | # | Partner | Track | How we'd use it | The requirement that decides it | Status |
 |---|---|---|---|---|---|
-| 1 | World | [Cont] Best Use of IDKit ($2.5k: up to 2 teams × $1,250) | One human, one row on the all-time board. Today a second browser profile is a second player, so two tabs in a private room can farm wins. Verified players rank; everyone else still plays. Selfie Check is the proportionate credential for a free board; Proof of Human only if cash is attached. | IDKit with server-side verification, a success and an alternative path in the demo, and a short debrief. No licence requirement. | Proposed |
-| 2 | 0G | Keep Building on 0G ($3k) | The bots' banter already calls any OpenAI-compatible endpoint; point it at 0G Compute and log the request ids. The game started on 0G agent brains (2026-06-20). | A 0G Compute request id, Storage root hash or Chain contract from this hackathon, a dated changelog from a prior state, and a video under 3 min. Paid at 0G's discretion. | Proposed |
-| 3 | Arc | Arc Studio Continuity Track: Bring Your Project to Arc ($3k) | An organiser-funded USDC prize for the top verified human, paid on Arc from the admin screen. Players never pay in, which keeps it clear of real-money gaming. The ETHOnline build had an Arc USDC escrow (removed 2026-09-24). | Built in Arc Studio: a shareable Studio project, shown in the demo (Studio can start from a GitHub repo). A working frontend and backend, and an architecture diagram. | Proposed |
+| 1 | World · **built (F7)** | [Cont] Best Use of IDKit ($2.5k: up to 2 teams × $1,250) | One human, one row on the all-time board. Today a second browser profile is a second player, so two tabs in a private room can farm wins. Verified players rank; everyone else still plays. Selfie Check is the proportionate credential for a free board; Proof of Human only if cash is attached. | IDKit with server-side verification, a success and an alternative path in the demo, and a short debrief. No licence requirement. | Proposed |
+| 2 | 0G · **built (F8)** | Keep Building on 0G ($3k) | The bots' banter already calls any OpenAI-compatible endpoint; point it at 0G Compute and log the request ids. The game started on 0G agent brains (2026-06-20). | A 0G Compute request id, Storage root hash or Chain contract from this hackathon, a dated changelog from a prior state, and a video under 3 min. Paid at 0G's discretion. | Proposed |
+| 3 | Arc · not started | Arc Studio Continuity Track: Bring Your Project to Arc ($3k) | An organiser-funded USDC prize for the top verified human, paid on Arc from the admin screen. Players never pay in, which keeps it clear of real-money gaming. The ETHOnline build had an Arc USDC escrow (removed 2026-09-24). | Built in Arc Studio: a shareable Studio project, shown in the demo (Studio can start from a GitHub repo). A working frontend and backend, and an architecture diagram. | Proposed |
 | — | Arkiv | Build on Arkiv, existing projects ($3k / $1k, plus $500 with Swarm) | The all-time board as Arkiv entities, which would also stop the Render resets (§8) | "A public repo with an open-source license." The repo is proprietary by the 2026-09-24 decision (ROADMAP §12). | Not picked unless that changes |
 
 Ruled out: Hedera (for projects already on Hedera), Whitechain (a USDT payment flow), Uniswap and ENS
@@ -105,6 +109,11 @@ swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive
   or a free uptime check on `/health` keeps it awake. · Shantanu · set the two vars on Render
 - Email-only admin isn't proof of identity, so a passcode is also required. · Shantanu · set
   `ADMIN_PASSCODE`
+- World ID stops one person holding many rows, but wins farmed with unverified alt tabs can still
+  feed one verified row. Next: count a match for the all-time board only when 2+ verified humans
+  played. · Shantanu · after the event
+- World (F7) and 0G (F8) need real credentials to demo: a World Developer Portal app, and a 0G
+  Router key with a 0G deposit. · Shantanu · before the video
 
 ## 9. Change log
 
@@ -113,3 +122,4 @@ swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive
 - 2026-11-06 19:55 IST · Partner picks re-ranked against the prize rules: Arc in, Arkiv out on its
   open-source requirement. Wins decided (P3).
 - 2026-11-06 20:05 IST · F3 now keeps the board in Upstash Redis instead of a paid disk (P4).
+- 2026-11-06 22:15 IST · F7 (World ID) and F8 (0G Compute receipts) added and built (P6). Arc not started.

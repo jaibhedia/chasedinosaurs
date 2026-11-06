@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 8h 30m to freeze, 12h 30m to the deadline (2026-11-06 20:30 IST)
+> ⏱ Time left at last update: 6h 47m to freeze, 10h 47m to the deadline (2026-11-06 22:12 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: beb935f -->
+<!-- last-logged: 9635ddf -->
 
 ## Eligibility gates
 
@@ -36,6 +36,9 @@ view, because the spectator shows the live board.
 | 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Shipped |
 | 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Shipped |
 | 6 | F6 | A shared `readPad()` for the game and the check; a Controls panel (3 tabs, live highlight, stick-side preview); `/settings` from home; Controls in the in-game menu | 40 min | Shipped |
+| 7 | F7 | World ID: server signing and verification, nullifier per player, verified-only board, the Verify panel | 60 min | Shipped |
+| 8 | F8 | 0G Compute receipts: trace capture, `/ai/receipts`, the line under the roast | 30 min | Shipped |
+| 9 | Arc | Organiser-funded USDC prize on Arc for the top verified human | 3 h | Not started: needs Arc Studio and a funded testnet wallet |
 
 ## Event go-live (today)
 
@@ -47,6 +50,13 @@ view, because the spectator shows the live board.
   open `<server>/health` and check `leaderboard.store` is `"upstash"`
 - [ ] Optional: stop the ~1-minute wake-up after 15 idle minutes, with the Starter plan
   ($7/month) or a free uptime check that loads `/health` every 10 minutes
+- [ ] World ID (F7): at developer.world.org create an app, enable World ID 4.0 and create the
+  action `chase-leaderboard` in **production**. Set `WORLD_APP_ID`, `WORLD_RP_ID` and
+  `WORLD_RP_SIGNING_KEY` on Render. `/health` then shows `world.enabled: true`; verify once with
+  World App on a phone
+- [ ] 0G (F8): at pc.0g.ai create an `sk-` key and deposit 0G. Set `AI_BASE_URL` to
+  `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL` (e.g. `glm-5.2`). Play a match,
+  then copy a request id from `<server>/ai/receipts` into the 0G submission
 - [ ] On the live site, check that:
   - points tick, and a steal adds 5
   - `/leaderboard` updates after an online match
@@ -275,6 +285,72 @@ One entry per push, oldest first, written by the post-push routine.
   and sent a screenshot (P5).
 - **Verified:** no tab label overflows at 1440 px, on `/settings` or on a 568 px phone. The
   25-check browser suite and the small-phone touch test pass. `npm run build` ✅.
+
+### F7 · Verified humans on the all-time board (World ID) · Shipped · 2026-11-06 22:07 IST
+- **Commits:** `cfd68cc` (server), `2e74e23` (client), `6df6d83` (config) · PR #6
+- **Files:**
+  - Server: `server/src/world.ts` (new), `server/src/world.test.ts` (new),
+    `server/src/leaderboard.ts`, `server/src/leaderboard.test.ts`, `server/src/index.ts`,
+    `server/package.json`
+  - Client: `src/lib/world.ts` (new), `src/components/WorldVerify.tsx` (new),
+    `src/screens/Leaderboard.tsx`, `package.json`
+  - Config: `render.yaml`, `server/.env.example`
+  - Size: +421/−12
+- **New vs reused:**
+  - New: IDKit 4 (World ID 4.0). The server signs each request with the RP key, checks that the
+    proof is for our action, environment and credential, and sends it as-is to World's
+    `/api/v4/verify/{rp_id}`. The nullifier is stored per player, so one World ID backs one
+    player. The board is verified-only, and the Verify panel's widget loads only on tap.
+  - Reused: F3's board and its Upstash/file storage, which now also keeps the verified flag. The
+    ETHOnline World ID code was removed on 2026-09-24; none of it was revived.
+- **AI:** Claude Code (Opus 5.5) chose Selfie Check as the credential and wrote the integration
+  and tests. **Human:** Shantanu asked Claude to integrate the sponsors it judged best without
+  breaking the game (P6), after Claude's prize ranking (P3).
+- **Challenge:** a real trust moment that never blocks play. Verification gates only the all-time
+  board. The nullifier, stored as a decimal as World advises, is what turns away a second profile
+  from the same person.
+- **Partner notes (World write-up):** the v4 result shapes, including where the nullifier sits,
+  were clearest in the raw `integrate.md`. The widget's `onError` gets only an error code, so the
+  reason for a rejection by our server is kept on our side. The `expo-crypto` peer is optional, so
+  the web build needed nothing extra.
+- **Verified:**
+  - Server tests 18/18. World: signing with a random key; an accepted proof returns a decimal
+    nullifier; proofs for another action, environment or credential never reach World; a
+    rejected proof, or one verified for another environment, is refused; one nullifier backs one
+    player; the verified-only board.
+  - Browser, with the local server: World off, the board is unchanged and shows no panel. World on
+    (a dummy app), the panel shows, tapping loads the widget chunk and World's dialog opens. It
+    reports "Verification unavailable" because the dummy app isn't registered.
+  - Entry bundle +3 KB; the widget is a separate 409 KB chunk.
+  - Not yet verified with a real World App.
+- **Next / known issues:** needs a Developer Portal app and the production action (go-live list).
+  Wins farmed with unverified alt tabs can still feed one verified row (PRD §8).
+
+### F8 · 0G Compute receipts for the bots' AI · Shipped · 2026-11-06 22:12 IST
+- **Commits:** `3967eaa` (server), `4a78f68` (results screen), `9635ddf` (config) · PR #6
+- **Files:** `server/src/ai/receipts.ts` (new), `server/src/botVoice.test.ts` (new),
+  `server/src/ai/provider.ts`, `server/src/botVoice.ts`, `server/src/index.ts`,
+  `src/screens/Results.tsx`, `render.yaml`, `server/.env.example` · +135/−20
+- **New vs reused:**
+  - New: receipts from the Router's `x_0g_trace` (request id, provider address) for every bot line
+    and roast, `GET /ai/receipts`, and the receipt under the roast on the results screen.
+  - Reused: the bots' OpenAI-compatible voice from before the event, which already supported the
+    0G Compute Router (`OG_ROUTER_*`). The game started on 0G agent brains (2026-06-20).
+- **AI:** Claude Code (Opus 5.5) wrote it and the tests. **Human:** as F7 (P6).
+- **Challenge:** making 0G visible without slowing the bots. Lines have a 1.1 s budget before the
+  game falls back to canned lines, so `verify_tee` (synchronous TEE verification) stays off. The
+  request id and provider address come on every Router response anyway.
+- **Partner notes (0G write-up):** `x_0g_trace` on every response made receipts a few lines of
+  code, and the OpenAI SDK keeps unknown fields, so no SDK change was needed. The docs give no
+  latency figure for `verify_tee`, which is what decided against it for live chat.
+- **Verified:**
+  - Server tests 18/18, including a roast against a stand-in Router whose receipt survives the
+    OpenAI client.
+  - A full solo match in the browser against a stand-in Router: the results screen shows "Written
+    on 0G Compute · request b413d8b6", and `/ai/receipts` listed 3 receipts (lines and the roast).
+  - Not yet run against the real Router (it needs an `sk-` key and a 0G deposit).
+- **Next:** point `AI_*` at `router-api.0g.ai`, play one match, and copy a request id from
+  `/ai/receipts` into the 0G submission.
 
 ## Submission checklist
 

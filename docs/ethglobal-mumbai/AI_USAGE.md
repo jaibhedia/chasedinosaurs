@@ -33,6 +33,9 @@ Tag `pre-ethglobal-mumbai-2026` points at `1dcafa3`, the last commit before the 
   Karmanya also wrote the leaderboard rules: a live per-match board, plus all-time boards ranked
   on best single matches, not sums. Karmanya then asked for a Settings option showing the
   controls for keyboard and mouse, controller and phone (P2).
+- After Claude ranked the partner prizes against their rules (P3), Shantanu asked Claude to
+  integrate the sponsors it judged best without breaking the game (P6). Claude chose World and
+  0G, and left Arc for a decision.
 
 **AI (Claude Code):** implementation under that direction: drafting code to the PRD's acceptance
 criteria, refactors, tests, and these docs.
@@ -63,14 +66,24 @@ AI role:
 | `src/lib/haptics.ts` | F4 | generated | Asked for the feature (P1) |
 | `server/src/match.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `server/src/match.test.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
-| `server/src/index.ts` | F2, F3, F1 | generated | Asked for the features; the admin identity plan is email now, wallet later (P1); an alternative to DATA_DIR (P4) |
-| `server/src/leaderboard.ts` | F3 | generated | Board rules by Karmanya: best single match, not sums (P1). Asked for storage other than DATA_DIR (P4) |
-| `server/src/leaderboard.test.ts` | F3 | generated | Board rules by Karmanya (P1); storage other than DATA_DIR (P4) |
-| `src/screens/Leaderboard.tsx` | F3 | generated | Three boards asked for by Karmanya (P1) |
+| `server/src/index.ts` | F2, F3, F1, F7, F8 | generated | Asked for the features; the admin identity plan is email now, wallet later (P1); an alternative to DATA_DIR (P4); sponsor integrations (P6) |
+| `server/src/leaderboard.ts` | F3, F7 | generated | Board rules by Karmanya: best single match, not sums (P1). Asked for storage other than DATA_DIR (P4); verified players (P6) |
+| `server/src/leaderboard.test.ts` | F3, F7 | generated | Board rules by Karmanya (P1); storage other than DATA_DIR (P4); verified players (P6) |
+| `src/screens/Leaderboard.tsx` | F3, F7 | generated | Three boards asked for by Karmanya (P1); the World ID panel (P6) |
 | `src/App.tsx` | F3, F1, F6 | generated | Asked for the features (P1, P2) |
 | `src/screens/Home.tsx` | F3, F6 | generated | Asked for the features (P1, P2) |
-| `render.yaml` | F3, F1 | generated | Asked for the features (P1, P4) |
-| `server/.env.example` | F3, F1 | generated | Asked for storage other than DATA_DIR (P4) |
+| `render.yaml` | F3, F1, F7, F8 | generated | Asked for the features (P1, P4, P6) |
+| `server/.env.example` | F3, F1, F7, F8 | generated | Asked for storage other than DATA_DIR (P4); sponsor settings (P6) |
+| `server/src/world.ts` | F7 | generated | Asked for the sponsors Claude judged best (P6) |
+| `server/src/world.test.ts` | F7 | generated | Asked for the sponsors Claude judged best (P6) |
+| `src/lib/world.ts` | F7 | generated | Asked for the sponsors Claude judged best (P6) |
+| `src/components/WorldVerify.tsx` | F7 | generated | Asked for the sponsors Claude judged best (P6) |
+| `package.json` | F7 | generated | Added `@worldcoin/idkit` (P6) |
+| `server/package.json` | F7 | generated | Added `@worldcoin/idkit-core` (P6) |
+| `server/src/ai/receipts.ts` | F8 | generated | Asked for the sponsors Claude judged best (P6) |
+| `server/src/ai/provider.ts` | F8 | generated | Asked for the sponsors Claude judged best (P6) |
+| `server/src/botVoice.ts` | F8 | generated | Asked for the sponsors Claude judged best (P6) |
+| `server/src/botVoice.test.ts` | F8 | generated | Asked for the sponsors Claude judged best (P6) |
 | `src/screens/Admin.tsx` | F1 | generated | Admin-only spectating, email identity for now (P1) |
 | `src/lib/adminSession.ts` | F1 | generated | Admin-only spectating, email identity for now (P1) |
 | `src/screens/PlayScreen.tsx` | F1 | generated | Asked for the feature (P1) |
@@ -80,7 +93,7 @@ AI role:
 | `src/lib/scoring.ts` | F2 | generated | Scoring rules by Karmanya (P1) |
 | `src/components/LiveScoreboard.tsx` | F2 | generated | Live per-match board asked for by Karmanya (P1) |
 | `src/scene/gameScene.ts` | F2, F1 | generated | Asked to build on the existing system rather than overhaul it (P1) |
-| `src/screens/Results.tsx` | F2 | generated | Asked for the feature (P1) |
+| `src/screens/Results.tsx` | F2, F8 | generated | Asked for the feature (P1); the 0G receipt (P6) |
 | `src/components/ControlsPanel.tsx` | F6 | generated | Controls for keyboard/mouse, controller and phone, asked for by Karmanya (P2); layout fix from a screenshot (P5) |
 | `src/screens/Settings.tsx` | F6 | generated | A Settings option, asked for by Karmanya (P2) |
 
@@ -166,3 +179,8 @@ messages are the same as in P1 and are elided here.
 > [screenshot: the in-game Controls panel on localhost at 1440 px wide, with the "Keyboard &
 > mouse" tab label wrapped onto two lines and the rows drawn as framed boxes]
 > fix the damn layout
+
+### P6 · 2026-11-06, about 21:55 IST · integrate the sponsors
+
+> okay start integrating the sponsprs which you feel are good and lmk what you did dont break the
+> existiing game'
