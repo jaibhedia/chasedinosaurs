@@ -227,8 +227,43 @@ video plan), kept out of the repo until the team decides.
 > give envs for frontend and bacend and rest and next steps on how to get form submission and
 > fucking gtm
 
-### P11 · 2026-11-07, about 01:50 IST · the voice button over the points board
+### P11 · 2026-11-07, about 02:08 IST · the voice button over the points board
 
 > [screenshot: the live game on chasedinosaurs.fun at desktop size, with the Voice button drawn
 > over the Points board in the top-right corner]
 > fix the voice button and points able overlapping
+
+### P12 · 2026-11-07, about 03:09 IST · why these partners
+
+Claude explained the picks and the blockers from PRD §5; nothing in the repo changed.
+
+> okay lmk why did you choose these sponsors and not anyother and any blocker in short and simple
+
+### P13 · 2026-11-07, about 03:12 IST · the demo video and the submission page
+
+Claude explained the recording and the form, and added the ETHOnline showcase page (the prior
+state) to the submission drafts.
+
+> also lmk how to create the demo video and fill the hack page before judging
+> "https://ethglobal.com/showcase/chase-dinosaurs-wecqx"
+
+### P14 · 2026-11-07, about 03:16 IST · the finalist pitch
+
+Claude wrote a run sheet and Q&A answers into the submission drafts.
+
+> lastly how tf am i supposed to do the pitch so that they find it tehcnical gtm maxxed and i get
+> a prize how tf bruh
+
+### P15 · 2026-11-07, about 03:22 IST · fix the stale partner section
+
+After Claude flagged that PRD §5 still read "Not chosen yet", with every partner "Proposed":
+
+> and lastl fix the docs issue which you flagged
+
+### P16 · 2026-11-07, about 03:24 IST · 0G and World setup
+
+Claude found that 0G's testnet Router failed TLS verification, so the faucet route couldn't
+work, and gave mainnet steps for 0G and the Developer Portal steps for World ID.
+
+> not able to at all fucking setup 0g testent fucet and ai key and world chain as well fucking
+> give accurate steps mf

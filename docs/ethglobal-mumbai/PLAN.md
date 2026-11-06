@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 2h 05m to freeze, 6h 05m to the deadline (2026-11-07 02:55 IST)
+> ⏱ Time left at last update: 1h 30m to freeze, 5h 30m to the deadline (2026-11-07 03:29 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: 9059eca -->
+<!-- last-logged: c509977 -->
 
 ## Eligibility gates
 
@@ -62,7 +62,8 @@ view, because the spectator shows the live board.
   Set `WORLD_APP_ID`, `WORLD_RP_ID` and `WORLD_RP_SIGNING_KEY` on Render. `/health` then shows
   `world.enabled: true`. The all-time board is empty until someone verifies, so verify once with
   World App on a phone straight away
-- [ ] 0G (F8): at pc.0g.ai connect a wallet, deposit 0G and create an `sk-` key (shown once). Set
+- [ ] 0G (F8): mainnet only. Faucet tokens are testnet tokens, and the testnet Router failed TLS
+  verification on 2026-11-07. At pc.0g.ai connect a wallet, deposit real 0G and create an `sk-` key (shown once). Set
   `AI_BASE_URL` to `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL` (`0gm-1.0-35b-a3b`,
   or `gpt-4.1-nano` if the bots stay quiet). Play a match, then copy a request id from
   `<server>/ai/receipts` into the 0G submission. If the list stays empty, the calls are failing or
@@ -449,6 +450,16 @@ One entry per push, oldest first, written by the post-push routine.
 - **Verified:** measured in live two-player matches at 1280×720 and 1440×900. The voice button
   spans 80–126 px from the top and the board starts at 136 px, with the menu button clear. Solo
   has no voice button and the board stays under the menu. No page errors.
+
+### Docs fix · PRD §5 names the partners we entered · 2026-11-07 03:29 IST
+- **Commits:** `c509977` (1) · PR #8
+- **Files:** `docs/ethglobal-mumbai/PRD.md` · +9/−6
+- **AI:** Claude Code (Opus 5.5) flagged the stale section and fixed it. **Human:** Shantanu asked
+  for the fix (P15).
+- **Partner notes:** 0G's testnet Router (`router-api-testnet.integratenetwork.work`, which
+  pc.testnet.0g.ai calls) failed TLS certificate verification from both curl and Node at about
+  03:30 IST, so testnet faucet tokens can't pay for our calls (P16). Mainnet (pc.0g.ai) needs
+  real 0G.
 
 ## Submission checklist
 
