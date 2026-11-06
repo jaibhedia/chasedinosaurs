@@ -225,6 +225,7 @@ export default function ControlsPanel({ live = false, bare = false }: ControlsPa
             onClick={() => setTab(t.id)}
             className={`px-chip flex min-w-0 items-center justify-center gap-1.5 px-2 py-2 transition-all ${t.id === tab ? 'brightness-125' : 'opacity-60 hover:opacity-90'}`}
             data-testid={`controls-tab-${t.id}`}
+            data-pad-autofocus={t.id === tab || undefined}
           >
             <t.icon className="h-4 w-4 shrink-0 text-[#5fcde4]" />
             <span className="px-heading truncate whitespace-nowrap text-[8px] uppercase tracking-wider text-[#f4e7c3] sm:text-[9px]">{t.short}</span>
@@ -232,7 +233,12 @@ export default function ControlsPanel({ live = false, bare = false }: ControlsPa
         ))}
       </div>
 
-      <div className={bare ? 'flex flex-col gap-2' : 'px-panel flex flex-col gap-2 p-3'} role="tabpanel">
+      <div
+        className={bare ? 'flex flex-col gap-2' : 'px-panel flex flex-col gap-2 p-3'}
+        role="tabpanel"
+        // Checking B here shouldn't leave the page (padNav.ts).
+        data-pad-check={tab === 'controller' || undefined}
+      >
         {tab === 'keyboard' && (
           <>
             <Rows rows={KEYBOARD} active={heldKeys} />

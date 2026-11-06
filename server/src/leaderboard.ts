@@ -28,9 +28,13 @@ interface Entry {
   wins: number;
   matches: number;
   updatedAt: number;
+  /** Proved a unique human with World ID (see world.ts). */
+  verified?: boolean;
+  /** That proof's nullifier, as a decimal: one World ID backs one player. Never sent out. */
+  nullifier?: string;
 }
 
-export interface BoardRow { rank: number; name: string; value: number; bestPoints: number; you: boolean }
+export interface BoardRow { rank: number; name: string; value: number; bestPoints: number; you: boolean; verified: boolean }
 
 const entries = new Map<string, Entry>();
 /** False until the stored board has been read. Saving before then would overwrite it. */
@@ -103,6 +107,8 @@ function merge(stored: Entry, recent?: Entry): Entry {
     bestPoints: Math.max(stored.bestPoints, recent.bestPoints),
     wins: stored.wins + recent.wins,
     matches: stored.matches + recent.matches,
+    verified: stored.verified || recent.verified,
+    nullifier: recent.nullifier ?? stored.nullifier,
   };
 }
 
@@ -192,6 +198,25 @@ export function recordMatch(result: MatchResult, players: Array<{ userId: string
   scheduleSave();
 }
 
+/**
+ * Mark a player as a verified human, keyed by their World ID nullifier. One World ID backs
+ * one player: 'taken' when a different player already holds this nullifier.
+ */
+export function markVerified(userId: string, nullifier: string, now = Date.now()): 'ok' | 'taken' {
+  for (const e of entries.values()) if (e.nullifier === nullifier && e.userId !== userId) return 'taken';
+  const e = entries.get(userId)
+    ?? { userId, name: 'Player', bestHoldMs: 0, bestSteals: 0, bestPoints: 0, wins: 0, matches: 0, updatedAt: now };
+  e.verified = true;
+  e.nullifier = nullifier;
+  entries.set(userId, e);
+  scheduleSave();
+  return 'ok';
+}
+
+export function isVerified(userId: string): boolean {
+  return !!userId && entries.get(userId)?.verified === true;
+}
+
 const VALUE: Record<Board, (e: Entry) => number> = {
   hold: (e) => e.bestHoldMs,
   steals: (e) => e.bestSteals,
@@ -201,14 +226,17 @@ const VALUE: Record<Board, (e: Entry) => number> = {
 /**
  * The top `limit` on a board, best first (ties: best match points, then whoever got there
  * first). User ids stay private: `me` only marks the caller's own row, and `me` in the
- * result is their own rank even when it's outside the top.
+ * result is their own rank even when it's outside the top. With `verifiedOnly` (World ID
+ * on), only verified humans rank.
  */
-export function leaderboard(board: Board, me = '', limit = 20): { board: Board; entries: BoardRow[]; me: BoardRow | null } {
+export function leaderboard(board: Board, me = '', limit = 20, verifiedOnly = false): { board: Board; entries: BoardRow[]; me: BoardRow | null } {
   const value = VALUE[board];
   const ranked = [...entries.values()]
-    .filter((e) => value(e) > 0)
+    .filter((e) => value(e) > 0 && (!verifiedOnly || e.verified === true))
     .sort((a, b) => value(b) - value(a) || b.bestPoints - a.bestPoints || a.updatedAt - b.updatedAt);
-  const row = (e: Entry, i: number): BoardRow => ({ rank: i + 1, name: e.name, value: value(e), bestPoints: e.bestPoints, you: !!me && e.userId === me });
+  const row = (e: Entry, i: number): BoardRow => ({
+    rank: i + 1, name: e.name, value: value(e), bestPoints: e.bestPoints, you: !!me && e.userId === me, verified: e.verified === true,
+  });
   const mine = me ? ranked.findIndex((e) => e.userId === me) : -1;
   return { board, entries: ranked.slice(0, limit).map(row), me: mine >= 0 ? row(ranked[mine], mine) : null };
 }

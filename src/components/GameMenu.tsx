@@ -93,6 +93,7 @@ export default function GameMenu() {
             exit={{ scale: 0.85, y: 20 }}
             transition={{ type: 'spring', stiffness: 260, damping: 22 }}
             data-stick-ignore
+            data-pad-scope
           >
             {view === 'controls' ? (
               <>

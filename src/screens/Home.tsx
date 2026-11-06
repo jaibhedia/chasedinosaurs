@@ -63,6 +63,7 @@ export default function Home() {
             onClick={() => navigate('/play')}
             className="px-10 sm:px-16 md:px-24 text-base sm:text-lg md:text-2xl py-3 sm:py-4 md:py-6 short:py-2.5 [&_svg]:size-4 sm:[&_svg]:size-5 md:[&_svg]:size-6"
             data-testid="home-play"
+            data-pad-autofocus
           >
             <Play className="fill-current" />
             Play

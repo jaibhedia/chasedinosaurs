@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 8h 30m to freeze, 12h 30m to the deadline (2026-11-06 20:30 IST)
+> ⏱ Time left at last update: 5h 35m to freeze, 9h 35m to the deadline (2026-11-06 23:25 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: beb935f -->
+<!-- last-logged: de5bae2 -->
 
 ## Eligibility gates
 
@@ -36,10 +36,18 @@ view, because the spectator shows the live board.
 | 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Shipped |
 | 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Shipped |
 | 6 | F6 | A shared `readPad()` for the game and the check; a Controls panel (3 tabs, live highlight, stick-side preview); `/settings` from home; Controls in the in-game menu | 40 min | Shipped |
+| 7 | F7 | World ID: server signing and verification, nullifier per player, verified-only board, the Verify panel | 60 min | Shipped |
+| 8 | F8 | 0G Compute receipts: trace capture, `/ai/receipts`, the line under the roast | 30 min | Shipped |
+| 9 | Arc | Organiser-funded USDC prize on Arc for the top verified human | 3 h | Not started: needs Arc Studio and a funded testnet wallet |
+| 10 | F9 | Player names: one rule set on the server and in the browser, a name field (mode screen, Settings, a room), names on the roster, tags, live board and results | 40 min | Shipped |
+| 11 | F10 | Controller in the menus: the D-pad or stick moves focus, A presses, B goes back; the in-game menu, How to Play and the pad check | 45 min | Shipped |
 
 ## Event go-live (today)
 
-- [ ] Merge PR #6 with a **merge commit**. Vercel deploys the web app and Render the server.
+- [x] Merge PR #6 with a merge commit (20:36 IST, `5355089`).
+- [ ] Merge [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7), the final PR (F7 World
+  ID, F8 0G receipts, F9 names, F10 controller menus), with a **merge commit**. Vercel deploys
+  the web app and Render the server.
 - [ ] Render env: `ADMIN_EMAILS` (comma-separated) and `ADMIN_PASSCODE`. Without the emails
   nobody can spectate.
 - [ ] Leaderboard storage (free): at upstash.com create a Redis database, copy its REST URL and
@@ -47,6 +55,17 @@ view, because the spectator shows the live board.
   open `<server>/health` and check `leaderboard.store` is `"upstash"`
 - [ ] Optional: stop the ~1-minute wake-up after 15 idle minutes, with the Starter plan
   ($7/month) or a free uptime check that loads `/health` every 10 minutes
+- [ ] World ID (F7), after Upstash (otherwise a restart forgets who is verified): at
+  developer.world.org create an app, enable World ID 4.0 and create the action
+  `chase-leaderboard` in **production**. Copy the signing key when it's shown; it's shown once.
+  Set `WORLD_APP_ID`, `WORLD_RP_ID` and `WORLD_RP_SIGNING_KEY` on Render. `/health` then shows
+  `world.enabled: true`. The all-time board is empty until someone verifies, so verify once with
+  World App on a phone straight away
+- [ ] 0G (F8): at pc.0g.ai connect a wallet, deposit 0G and create an `sk-` key (shown once). Set
+  `AI_BASE_URL` to `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL` (`0gm-1.0-35b-a3b`,
+  or `gpt-4.1-nano` if the bots stay quiet). Play a match, then copy a request id from
+  `<server>/ai/receipts` into the 0G submission. If the list stays empty, the calls are failing or
+  slower than the bots' 1.1 s budget; try the other model
 - [ ] On the live site, check that:
   - points tick, and a steal adds 5
   - `/leaderboard` updates after an online match
@@ -54,6 +73,10 @@ view, because the spectator shows the live board.
 - [ ] Try an Xbox pad on a PC, and the stick-side toggle on a phone
 - [ ] Settings → Controls: press a pad's buttons and see each row light up; flip the stick side
   on a phone
+- [ ] Names (F9): pick one on `/play`, join a room from a second device, and see both names on
+  the roster, over the dinos and, after the match, on `/leaderboard`
+- [ ] Controller menus (F10), with a real pad and no mouse: Home → Play → Quick Play; in a match,
+  Start → the menu → Resume
 
 ## How we commit
 
@@ -275,6 +298,143 @@ One entry per push, oldest first, written by the post-push routine.
   and sent a screenshot (P5).
 - **Verified:** no tab label overflows at 1440 px, on `/settings` or on a 568 px phone. The
   25-check browser suite and the small-phone touch test pass. `npm run build` ✅.
+
+### F7 · Verified humans on the all-time board (World ID) · Shipped · 2026-11-06 22:07 IST
+- **Commits:** `cfd68cc` (server), `2e74e23` (client), `6df6d83` (config) · PR #7
+- **Files:**
+  - Server: `server/src/world.ts` (new), `server/src/world.test.ts` (new),
+    `server/src/leaderboard.ts`, `server/src/leaderboard.test.ts`, `server/src/index.ts`,
+    `server/package.json`
+  - Client: `src/lib/world.ts` (new), `src/components/WorldVerify.tsx` (new),
+    `src/screens/Leaderboard.tsx`, `package.json`
+  - Config: `render.yaml`, `server/.env.example`
+  - Size: +421/−12
+- **New vs reused:**
+  - New: IDKit 4 (World ID 4.0). The server signs each request with the RP key, checks that the
+    proof is for our action, environment and credential, and sends it as-is to World's
+    `/api/v4/verify/{rp_id}`. The nullifier is stored per player, so one World ID backs one
+    player. The board is verified-only, and the Verify panel's widget loads only on tap.
+  - Reused: F3's board and its Upstash/file storage, which now also keeps the verified flag. The
+    ETHOnline World ID code was removed on 2026-09-24; none of it was revived.
+- **AI:** Claude Code (Opus 5.5) chose Selfie Check as the credential and wrote the integration
+  and tests. **Human:** Shantanu asked Claude to integrate the sponsors it judged best without
+  breaking the game (P6), after Claude's prize ranking (P3).
+- **Challenge:** a real trust moment that never blocks play. Verification gates only the all-time
+  board. The nullifier, stored as a decimal as World advises, is what turns away a second profile
+  from the same person.
+- **Partner notes (World write-up):** the v4 result shapes, including where the nullifier sits,
+  were clearest in the raw `integrate.md`. The widget's `onError` gets only an error code, so the
+  reason for a rejection by our server is kept on our side. The `expo-crypto` peer is optional, so
+  the web build needed nothing extra.
+- **Verified:**
+  - Server tests 18/18. World: signing with a random key; an accepted proof returns a decimal
+    nullifier; proofs for another action, environment or credential never reach World; a
+    rejected proof, or one verified for another environment, is refused; one nullifier backs one
+    player; the verified-only board.
+  - Browser, with the local server: World off, the board is unchanged and shows no panel. World on
+    (a dummy app), the panel shows, tapping loads the widget chunk and World's dialog opens. It
+    reports "Verification unavailable" because the dummy app isn't registered.
+  - Entry bundle +3 KB; the widget is a separate 409 KB chunk.
+  - Not yet verified with a real World App.
+- **Next / known issues:** needs a Developer Portal app and the production action (go-live list).
+  Wins farmed with unverified alt tabs can still feed one verified row (PRD §8).
+
+### F8 · 0G Compute receipts for the bots' AI · Shipped · 2026-11-06 22:12 IST
+- **Commits:** `3967eaa` (server), `4a78f68` (results screen), `9635ddf` (config) · PR #7
+- **Files:** `server/src/ai/receipts.ts` (new), `server/src/botVoice.test.ts` (new),
+  `server/src/ai/provider.ts`, `server/src/botVoice.ts`, `server/src/index.ts`,
+  `src/screens/Results.tsx`, `render.yaml`, `server/.env.example` · +135/−20
+- **New vs reused:**
+  - New: receipts from the Router's `x_0g_trace` (request id, provider address) for every bot line
+    and roast, `GET /ai/receipts`, and the receipt under the roast on the results screen.
+  - Reused: the bots' OpenAI-compatible voice from before the event, which already supported the
+    0G Compute Router (`OG_ROUTER_*`). The game started on 0G agent brains (2026-06-20).
+- **AI:** Claude Code (Opus 5.5) wrote it and the tests. **Human:** as F7 (P6).
+- **Challenge:** making 0G visible without slowing the bots. Lines have a 1.1 s budget before the
+  game falls back to canned lines, so `verify_tee` (synchronous TEE verification) stays off. The
+  request id and provider address come on every Router response anyway.
+- **Partner notes (0G write-up):** `x_0g_trace` on every response made receipts a few lines of
+  code, and the OpenAI SDK keeps unknown fields, so no SDK change was needed. The docs give no
+  latency figure for `verify_tee`, which is what decided against it for live chat.
+- **Verified:**
+  - Server tests 18/18, including a roast against a stand-in Router whose receipt survives the
+    OpenAI client.
+  - A full solo match in the browser against a stand-in Router: the results screen shows "Written
+    on 0G Compute · request b413d8b6", and `/ai/receipts` listed 3 receipts (lines and the roast).
+  - Not yet run against the real Router (it needs an `sk-` key and a 0G deposit).
+- **Next:** point `AI_*` at `router-api.0g.ai`, play one match, and copy a request id from
+  `/ai/receipts` into the 0G submission.
+
+### Process · F7 and F8 wait in PR #7 · 2026-11-06 22:55 IST
+- **Commits:** this docs commit · [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7)
+- PR #6 was merged with a merge commit (`5355089`) at 20:36 IST, before F7 and F8 were pushed.
+  Their seven commits reached `new` after the merge, so they wait in PR #7, and nothing in them is
+  live until it's merged.
+- **Live check (22:30 IST):** Render's `/health` shows the bots on Groq (`llama-3.1-8b-instant`)
+  and `leaderboard.store: "file"`, so Upstash isn't set yet. CORS answers only
+  `chasedinosaurs.fun` and `www.chasedinosaurs.fun`.
+- **0G model:** the Router's public `/v1/models` lists `temperature` and `max_tokens`, the two
+  parameters the bots send, for 0G's own `0gm-1.0-35b-a3b`. `glm-5.2`, the earlier example, lists
+  neither, so the go-live list now suggests `0gm-1.0-35b-a3b`, with `gpt-4.1-nano` as a fallback.
+  The Router's latency against the bots' 1.1 s budget is still untested.
+
+### F9 · Player names · Shipped · 2026-11-06 23:25 IST
+- **Commits:** `3d9f7f8` (server), `989cb07` (picking a name), `4c02af1` (showing it) · PR #7
+- **Files:**
+  - Server: `server/src/names.ts` (new), `server/src/names.test.ts` (new), `server/src/index.ts`
+  - Client: `src/lib/playerName.ts` (new), `src/components/NameField.tsx` (new),
+    `src/store/gameStore.ts`, `src/screens/ModeSelect.tsx`, `src/screens/Settings.tsx`,
+    `src/screens/Lobby.tsx`, `src/scene/gameScene.ts`, `src/screens/Results.tsx`
+  - Size: +248/−23
+- **New vs reused:**
+  - New: a name each player picks, saved on the device, with one rule set on both sides; " 2"
+    for a name already in the room; renaming inside a room before the match.
+  - Reused: the room roster's `player_name` field, which until now held the dino's name, and the
+    existing name tags, live board and results screen.
+- **AI:** Claude Code (Opus 5.5) wrote it and the tests. **Human:** Shantanu asked for a naming
+  system as one of the last two features, for a final PR (P8).
+- **Challenge:** the room already had a name field that every screen ignored, because it always
+  held the dino's name. Making it the player's name meant routing one value through the lobby,
+  the scene, the results and the board. It also closed a gap: `set-character` stored whatever
+  name it was sent, unchecked and of any length.
+- **Verified:**
+  - Server tests 21/21, including the name rules (Devanagari, full-width letters, emoji, length)
+    and the " 2" for a clash.
+  - Browser, two players: both names on the roster with their dinos; "shantanu" typed in the room
+    becomes "shantanu 2"; the live board in the match names the other player. A solo match ends
+    on results listing "Shantanu" (you) and the bots by their dinos. On a 740×360 phone the field
+    fits on the mode screen and in Settings.
+- **Known issues:** names aren't reserved across the all-time board, so two people can both be
+  "Rex" there (World ID is what keeps it one row per person). There's no word filter.
+
+### F10 · Controller navigation in menus · Shipped · 2026-11-06 23:25 IST
+- **Commits:** `76e478b` (navigation), `de5bae2` (where each screen starts, what B presses) · PR #7
+- **Files:**
+  - `src/lib/padNav.ts` (new), `src/components/PadMenuNav.tsx` (new), `src/lib/gamepadInput.ts`,
+    `src/App.tsx`, `src/index.css`
+  - Marks: `src/components/GameMenu.tsx`, `src/components/ControlsPanel.tsx`,
+    `src/components/HowToPlay.tsx`, and the screens Home, ModeSelect, Settings, Lobby, Results,
+    SoloSetup, Support, Leaderboard and Admin
+  - Size: +259/−15
+- **New vs reused:**
+  - New: focus that moves to the nearest button in the direction pressed (hold to repeat), A to
+    press, B to go back, an outline while the pad is in use, and the pad driving the in-game menu.
+  - Reused: F4's pad reading (`readPad`, with a menu reading on top) and its Start/B menu toggle.
+- **AI:** Claude Code (Opus 5.5) wrote it and the browser checks. **Human:** Shantanu reported the
+  menus still couldn't be used with a controller and asked for it last (P8).
+- **Challenge:** the same buttons mean different things in different places. A fires the power in
+  a match but presses buttons in a menu, so the A that picked Resume also fired, and the D-pad
+  steered the dino behind an open menu. The pad now stops steering while the menu is open and
+  fires only on a fresh press with the menu shut. On the controller check, B has to light its row
+  rather than leave the page. "The nearest button down" also needed edge-to-edge distance:
+  centre to centre sent Down from Play to a small footer link.
+- **Verified:** 28 browser checks with a simulated Xbox pad, all passing. Home → Play → Quick Play
+  and back with the pad only; How to Play keeps focus and B skips it; the name field is reachable;
+  B on the controller check stays put while A lights Power; in a solo match Start opens the menu
+  on Resume, Down and A open Controls, B closes the menu, A on Resume closes it, and with the menu
+  shut the pad leaves the page alone. F6's 25 checks and the phone touch test still pass.
+- **Known issues:** tried with a simulated pad, not yet a physical one. A text field needs a
+  keyboard; A only focuses it.
 
 ## Submission checklist
 

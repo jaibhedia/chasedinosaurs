@@ -26,6 +26,10 @@ after it is new.
   - Xbox controller support on PC
   - The phone stick on either side
   - Settings → Controls for keyboard and mouse, controller and phone, with a live check
+  - Verified humans only on the all-time board, one row per person, with World ID
+  - The bots' AI on the 0G Compute Router, with a receipt for every line
+  - Player names: pick one, and it shows in rooms, over your dino, on the boards and results
+  - A controller in every menu: D-pad to move, A to press, B to go back
 - Docs:
   - [PRD](docs/ethglobal-mumbai/PRD.md): what we're building, and what came before
   - [Plan and build log](docs/ethglobal-mumbai/PLAN.md): one entry per push

@@ -220,3 +220,9 @@
   opacity: 0.35;
 }
 @media (prefers-reduced-motion: reduce) { .scanlines { opacity: 0.2; } }
+
+/* A controller is moving through the menus (src/lib/padNav.ts): show where it is. */
+html[data-pad-nav] :focus {
+  outline: 3px solid #ffc93c !important;
+  outline-offset: 2px;
+}

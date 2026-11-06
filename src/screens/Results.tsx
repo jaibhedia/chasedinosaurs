@@ -4,8 +4,9 @@ import { motion } from 'framer-motion';
 import { Crown, Home, RotateCcw, Share2, Skull, Star, ThumbsUp, Trophy, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DinoSprite } from '@/components/DinoSprite';
-import { useGameStore } from '@/store/gameStore';
+import { useGameStore, type Player } from '@/store/gameStore';
 import { useSocket } from '@/providers/SocketProvider';
+import { rosterName } from '@/lib/playerName';
 import { audioManager } from '@/utils/audioManager';
 import { clearMatchConfig, saveMatchConfig } from '@/lib/matchConfig';
 import { cannedRoast, type MatchRow } from '@/scene/botVoice';
@@ -17,13 +18,21 @@ const CONFETTI = ['#fbbf24', '#f59e0b', '#ef4444', '#ec4899', '#a855f7'];
 
 export default function Results() {
   const navigate = useNavigate();
-  const { winner, gameMessage, players, gameMode, resetMatch, setRoomCode, quickPlay } = useGameStore();
+  const { winner, gameMessage, players, gameMode, resetMatch, setRoomCode, quickPlay, roomPlayers, userId, playerName } = useGameStore();
   const { leaveRoom, socket } = useSocket();
   const [roast, setRoast] = useState<string | null>(null);
+  // Set when the roast ran on the 0G Compute Router: which request served it.
+  const [roastReceipt, setRoastReceipt] = useState<string | null>(null);
   const [shareState, setShareState] = useState<'idle' | 'busy' | 'saved' | 'failed'>('idle');
   const playedSound = useRef(false);
   const playerWon = winner?.id === 'player';
   usePageTitle(playerWon ? 'Victory' : 'Results');
+  // You and the other humans by your chosen names, bots by their dino's.
+  const nameOf = (p: Player) => {
+    if (p.isBot) return p.character.name;
+    if (p.id === 'player') return rosterName(roomPlayers, userId, playerName);
+    return rosterName(roomPlayers, p.userId, p.character.name);
+  };
 
   // No match to show (e.g. a refresh on /results): back to the start.
   useEffect(() => {
@@ -40,20 +49,22 @@ export default function Results() {
   useEffect(() => {
     if (players.length === 0) return;
     const rows: MatchRow[] = players.map((p) => ({
-      name: p.character.name,
+      name: nameOf(p),
       you: p.id === 'player',
       isBot: p.isBot,
       grabs: p.eggHoldCount ?? 0,
       heldS: Math.round((p.eggHeldMs ?? 0) / 1000),
     }));
-    const winnerName = winner?.character.name ?? null;
+    const winnerName = winner ? nameOf(winner) : null;
     const fallback = () => setRoast((r) => r ?? cannedRoast(rows, winnerName));
     if (!socket?.connected) { fallback(); return; }
     const timer = setTimeout(fallback, 1600);
-    socket.timeout(1500).emit('match-roast', { stats: rows, winner: winnerName }, (err: unknown, res?: { line?: string | null }) => {
+    socket.timeout(1500).emit('match-roast', { stats: rows, winner: winnerName }, (err: unknown, res?: { line?: string | null; receipt?: { requestId?: string } | null }) => {
       clearTimeout(timer);
-      if (!err && res?.line) setRoast(res.line);
-      else fallback();
+      if (!err && res?.line) {
+        setRoast(res.line);
+        setRoastReceipt(res.receipt?.requestId ?? null);
+      } else fallback();
     });
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,10 +139,10 @@ export default function Results() {
     setShareState('busy');
     try {
       const result = await shareCard({
-        title: playerWon ? 'VICTORY!' : winner ? `${winner.character.name.toUpperCase()} WINS` : 'NO WINNER',
+        title: playerWon ? 'VICTORY!' : winner ? `${nameOf(winner).toUpperCase()} WINS` : 'NO WINNER',
         spriteId: me.character.spriteId,
         color: me.character.color,
-        name: me.character.name,
+        name: nameOf(me),
         heldS: Math.round((me.eggHeldMs ?? 0) / 1000),
         grabs: me.eggHoldCount ?? 0,
         roast,
@@ -183,7 +194,7 @@ export default function Results() {
             <div className="flex items-center justify-center gap-2">
               <Crown className="w-4 h-4 md:w-6 md:h-6 text-yellow-400 shrink-0" />
               <h2 className="text-sm md:text-2xl short:text-sm font-black text-white uppercase" data-testid="results-winner">
-                {winner ? `${winner.character.name} wins` : 'Nobody grabbed the egg'}
+                {winner ? `${nameOf(winner)} wins` : 'Nobody grabbed the egg'}
               </h2>
               <Crown className="w-4 h-4 md:w-6 md:h-6 text-yellow-400 shrink-0" />
             </div>
@@ -193,6 +204,11 @@ export default function Results() {
           {roast && (
             <p className="text-[#ffc93c] text-base md:text-lg short:text-sm italic leading-tight" data-testid="results-roast">
               “{roast}”
+            </p>
+          )}
+          {roast && roastReceipt && (
+            <p className="text-[#f4e7c3]/60 text-xs -mt-1" title={roastReceipt} data-testid="results-roast-receipt">
+              Written on 0G Compute · request {roastReceipt.slice(0, 8)}
             </p>
           )}
 
@@ -229,7 +245,7 @@ export default function Results() {
               <Share2 className="w-5 h-5" />
               {shareState === 'saved' ? 'Saved!' : shareState === 'failed' ? 'Try again' : playerWon ? 'Share win' : 'Share'}
             </Button>
-            <Button onClick={home} variant="outline" size="lg" className="gap-2">
+            <Button onClick={home} variant="outline" size="lg" className="gap-2" data-pad-back>
               <Home className="w-5 h-5" /> Home
             </Button>
           </div>
@@ -248,7 +264,7 @@ export default function Results() {
                 <div className="w-8 h-8 md:w-11 md:h-11 short:w-7 short:h-7 pixel-border shrink-0" style={{ backgroundColor: p.character.color }}>
                   <DinoSprite spriteId={p.character.spriteId} className="w-full h-full" scale={1.4} />
                 </div>
-                <span className="text-base md:text-xl short:text-sm font-black text-white truncate">{p.character.name}</span>
+                <span className="text-base md:text-xl short:text-sm font-black text-white truncate">{nameOf(p)}</span>
                 {p.id === 'player' && <span className="px-1.5 py-0.5 bg-[#6ab04c] text-white text-[10px] font-bold uppercase">You</span>}
                 {p.isBot && <span className="px-1.5 py-0.5 bg-[#261309] text-[#f4e7c3] text-[10px] font-bold uppercase">Bot</span>}
               </div>

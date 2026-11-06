@@ -29,8 +29,11 @@ import rateLimit from 'express-rate-limit';
 import { Server, type Socket } from 'socket.io';
 import { botLine, matchRoast } from './botVoice';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
+import { recentReceipts } from './ai/receipts';
 import { Match } from './match';
-import { BOARDS, flushLeaderboard, leaderboard, leaderboardStore, loadLeaderboard, recordMatch } from './leaderboard';
+import { BOARDS, flushLeaderboard, isVerified, leaderboard, leaderboardStore, loadLeaderboard, markVerified, recordMatch } from './leaderboard';
+import { rpContext, verifyProof, worldConfig, worldEnabled, WorldError } from './world';
+import { cleanName, uniqueName } from './names';
 
 const PORT = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 /** How long a disconnected player's slot is held open for them to come back. */
@@ -296,8 +299,9 @@ app.get('/health', (_req, res) => {
     ok: true,
     rooms: rooms.size,
     uptime: process.uptime(),
-    ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null },
+    ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null, lastReceipt: recentReceipts(1)[0] ?? null },
     leaderboard: leaderboardStore(),
+    world: { enabled: worldEnabled },
   });
 });
 
@@ -308,7 +312,45 @@ app.get('/health', (_req, res) => {
 app.get('/leaderboard', (req, res) => {
   const board = BOARDS.find((b) => b === req.query.board) ?? 'hold';
   const me = typeof req.query.me === 'string' ? req.query.me.slice(0, 64) : '';
-  res.json(leaderboard(board, me));
+  res.json({ ...leaderboard(board, me, 20, worldEnabled), verifiedOnly: worldEnabled, youVerified: worldEnabled && isVerified(me) });
+});
+
+/**
+ * Receipts for the bots' recent AI lines on the 0G Compute Router: request id, provider
+ * address and time. Empty on other providers. No prompts or lines.
+ */
+app.get('/ai/receipts', (_req, res) => {
+  res.json({ provider: aiProviderName, receipts: recentReceipts() });
+});
+
+// --- World ID: one human, one row on the all-time board (off unless configured) --------
+app.get('/world/config', (_req, res) => {
+  res.json(worldConfig());
+});
+
+app.post('/world/rp-context', (_req, res) => {
+  if (!worldEnabled) { res.status(404).json({ error: 'off' }); return; }
+  res.json(rpContext());
+});
+
+app.post('/world/verify', express.json({ limit: '64kb' }), async (req, res) => {
+  if (!worldEnabled) { res.status(404).json({ error: 'off' }); return; }
+  const userId = typeof req.body?.userId === 'string' ? req.body.userId.slice(0, 64) : '';
+  if (!userId) { res.status(400).json({ error: 'missing-player' }); return; }
+  try {
+    const proof = await verifyProof(req.body?.result);
+    if (markVerified(userId, proof.nullifier) === 'taken') {
+      res.status(409).json({ error: 'already-linked' });
+      return;
+    }
+    const score = proof.sybilScore === undefined ? '' : `, sybil score ${proof.sybilScore}`;
+    console.log(`[world] verified a player (${proof.credential}${score})`);
+    res.json({ ok: true });
+  } catch (err) {
+    const code = err instanceof WorldError ? err.code : 'invalid';
+    console.warn(`[world] verify failed (${code}):`, (err as Error).message);
+    res.status(code === 'unreachable' ? 502 : 400).json({ error: code });
+  }
 });
 
 void loadLeaderboard();
@@ -376,7 +418,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     const roomCode = genRoomCode();
     const player: LobbyPlayer = {
       id: `p-${socket.id.slice(0, 8)}`,
-      player_name: cleanStr(data.playerName, 24) || 'Host',
+      player_name: cleanName(data.playerName) || 'Host',
       user_id: data.userId,
       is_ready: false,
       character_id: cleanNum(data.characterId, 1, 4) || 1,
@@ -424,7 +466,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       // never fails on a clash; the lobby picker lets them swap afterwards.
       room.players.push({
         id: `p-${socket.id.slice(0, 8)}`,
-        player_name: cleanStr(data.playerName, 24) || 'Player',
+        player_name: uniqueName(cleanName(data.playerName) || 'Player', room.players.map((p) => p.player_name)),
         user_id: data.userId,
         is_ready: false,
         character_id: resolveCharacter(room, data.characterId),
@@ -470,7 +512,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     }
     const player: LobbyPlayer = {
       id: `p-${socket.id.slice(0, 8)}`,
-      player_name: cleanStr(data.playerName, 24) || 'Player',
+      player_name: cleanName(data.playerName) || 'Player',
       user_id: data.userId,
       is_ready: true, // nothing to ready up for; the timer starts it
       character_id: cleanNum(data.characterId, 1, 4) || 1,
@@ -481,6 +523,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     if (rc) {
       room = rooms.get(rc)!;
       player.character_id = resolveCharacter(room, player.character_id);
+      player.player_name = uniqueName(player.player_name, room.players.map((p) => p.player_name));
       room.players.push(player);
     } else {
       if (rooms.size >= MAX_ROOMS) {
@@ -599,7 +642,9 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       return;
     }
     p.character_id = Number(characterId);
-    if (playerName) p.player_name = playerName; // name mirrors the character
+    // The player's chosen name (older clients still send their dino's).
+    const name = cleanName(playerName);
+    if (name) p.player_name = uniqueName(name, room.players.filter((x) => x !== p).map((x) => x.player_name));
     socket.data.roomCode = rc;
     socket.data.userId = uid;
     socket.join(rc);
@@ -748,10 +793,12 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
   });
 
   /** One line summing up the finished match for the results screen, or null. */
-  socket.on('match-roast', async (payload: any, ack?: (res: { line: string | null }) => void) => {
+  socket.on('match-roast', async (payload: any, ack?: (res: { line: string | null; receipt?: { requestId: string; provider: string | null } | null }) => void) => {
     if (typeof ack !== 'function') return;
     if (!rateOk(`${socket.id}:roast`, 3, 30_000)) { ack({ line: null }); return; }
-    ack({ line: await matchRoast(payload?.stats ?? [], payload?.winner) });
+    const roast = await matchRoast(payload?.stats ?? [], payload?.winner);
+    const r = roast?.receipt;
+    ack({ line: roast?.line ?? null, receipt: r ? { requestId: r.requestId, provider: r.provider } : null });
   });
 
   /** Admin sign-in for spectating: an allowlisted email, plus the passcode when one is set. */

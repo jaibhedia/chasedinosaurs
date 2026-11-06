@@ -37,7 +37,8 @@ services:
 
       # --- AI provider: bot personalities and taunts -------------------------
       # Any OpenAI-compatible endpoint. Unset, the bots still play on local tactics
-      # and simply don't talk.
+      # and simply don't talk. On the 0G Compute Router (https://router-api.0g.ai/v1, an
+      # sk- key and a model from pc.0g.ai), every line gets a receipt: see /ai/receipts.
       - key: AI_BASE_URL
         sync: false
       # SECRET.
@@ -58,6 +59,18 @@ services:
       # Without Upstash: the folder for leaderboard.json (default: ./data). The free plan wipes
       # it on every restart, deploy and idle sleep; it only lasts on a paid plan's persistent disk.
       - key: DATA_DIR
+        sync: false
+
+      # --- World ID: verified humans only on the all-time board ------------------
+      # From the World Developer Portal (developer.world.org): create an app, enable World ID
+      # 4.0, and create the action "chase-leaderboard" in the production environment.
+      # Unset: World ID is off and everyone ranks, as before.
+      - key: WORLD_APP_ID
+        sync: false
+      - key: WORLD_RP_ID
+        sync: false
+      # SECRET. The RP signing key.
+      - key: WORLD_RP_SIGNING_KEY
         sync: false
 
       # --- Admin spectator mode (/admin) ------------------------------------------

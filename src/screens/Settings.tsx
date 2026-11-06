@@ -2,8 +2,9 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import ControlsPanel from '@/components/ControlsPanel';
+import NameField from '@/components/NameField';
 
-/** Settings, from the home screen. It holds the controls for now; the in-game menu shows the same panel. */
+/** Settings, from the home screen: your name, and the controls (the in-game menu shows the same panel). */
 export default function Settings() {
   const navigate = useNavigate();
   usePageTitle('Settings');
@@ -17,12 +18,17 @@ export default function Settings() {
             onClick={() => navigate('/')}
             className="pixel-button flex h-10 w-10 items-center justify-center !p-0"
             aria-label="Back to the main menu"
+            data-pad-back
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
           <h1 className="px-heading text-lg sm:text-2xl" style={{ color: '#ffc93c', textShadow: '3px 3px 0 #11111c' }}>
             Settings
           </h1>
+        </div>
+
+        <div className="px-panel p-3">
+          <NameField />
         </div>
 
         <h2 className="px-heading text-[10px] uppercase tracking-wider text-[#f4e7c3]/80 sm:text-xs">Controls</h2>

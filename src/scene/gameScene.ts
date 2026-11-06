@@ -10,6 +10,7 @@ import { TUNING, PERSONAS, PERSONA_SPEED, assignRoles, ramp, type BotTuning, typ
 import type { Difficulty } from '@/store/gameStore';
 import { touchInput, resetTouchInput } from '@/lib/touchInput';
 import { matchPoints } from '@/lib/scoring';
+import { rosterName } from '@/lib/playerName';
 
 const CHAR_SPRITES: Record<string, { name: string }> = {
   doux: { name: 'doux' },
@@ -898,7 +899,7 @@ export class GameScene extends Phaser.Scene {
        */
       const nameTag = sprite.getByName('name') as Phaser.GameObjects.Text | null;
       const marker = sprite.getByName('marker') as Phaser.GameObjects.Text | null;
-      const label = isSelf ? 'YOU' : p.character.name;
+      const label = isSelf ? 'YOU' : this.nameOf(p);
       const css = this.colorToCss(markerColor);
       if (nameTag) {
         if (nameTag.text !== label) nameTag.setText(label);
@@ -3839,6 +3840,12 @@ export class GameScene extends Phaser.Scene {
     return this.spectating ? this.gsPlayers.filter((p) => p.id !== 'player') : this.gsPlayers;
   }
 
+  /** A human's chosen name from the room roster; bots (and anyone off it) go by their dino. */
+  private nameOf(p: Player): string {
+    if (p.isBot) return p.character.name;
+    return rosterName(useGameStore.getState().roomPlayers || [], p.userId, p.character.name);
+  }
+
   /** The server's running tally (online): time held, steals and grabs for everyone. */
   private applyMatchScores(payload: any) {
     if (this.gameOver || !Array.isArray(payload?.stats)) return;
@@ -3856,14 +3863,12 @@ export class GameScene extends Phaser.Scene {
   private updateScoreboard(now: number) {
     if (now - this.lastScoreboardAt < 250) return;
     this.lastScoreboardAt = now;
-    const roster: any[] = useGameStore.getState().roomPlayers || [];
     const rows: ScoreRow[] = this.visiblePlayers().map((p) => {
       const heldMs = p.eggHeldMs ?? 0;
       const steals = p.steals ?? 0;
-      const named = p.isBot ? undefined : roster.find((r) => r.user_id === p.userId)?.player_name;
       return {
         id: p.id,
-        name: p.id === 'player' ? 'You' : named || p.character.name,
+        name: p.id === 'player' ? 'You' : this.nameOf(p),
         points: matchPoints(heldMs, steals, false),
         heldS: Math.floor(heldMs / 1000),
         steals,
