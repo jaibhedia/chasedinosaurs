@@ -33,6 +33,9 @@ export default function MobileControls({
   // Shared detection — identical to GameHUD, so controls + HUD never disagree.
   const showControls = useIsTouchDevice();
   const selectedCharacter = useGameStore((s) => s.selectedCharacter);
+  // The player picks the stick's side in the menu; the power button takes the other one.
+  const stickSide = useGameStore((s) => s.stickSide);
+  const powerSide = stickSide === 'right' ? 'left' : 'right';
   const cooldownMax = powerUpCooldownMax ?? selectedCharacter?.powerUp?.cooldown ?? 15000;
   const activeDuration = selectedCharacter?.powerUp?.duration ?? 3000;
 
@@ -106,12 +109,13 @@ export default function MobileControls({
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[60]">
-      {/* Power-up button — bottom-left, thumb-reachable, clear of the home indicator. */}
+      {/* Power-up button — bottom corner opposite the stick, thumb-reachable, clear of the
+          home indicator. */}
       <div
         className="absolute pointer-events-auto flex items-center"
         style={{
           bottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)',
-          left: 'calc(env(safe-area-inset-left, 0px) + 0.75rem)',
+          [powerSide]: `calc(env(safe-area-inset-${powerSide}, 0px) + 0.75rem)`,
         }}
       >
         <PowerUpHudCluster
@@ -127,12 +131,13 @@ export default function MobileControls({
       </div>
 
       {/* Twin-stick style joystick — pixel-themed (sharp corners per brand, no blur/gradient).
-          Responsive: smaller on phones, larger on tablets/iPads. */}
+          Responsive: smaller on phones, larger on tablets/iPads. Right by default, left
+          when the player flips it in the menu. */}
       <div
         className="absolute pointer-events-auto flex flex-col items-center gap-1.5"
         style={{
           bottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)',
-          right: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)',
+          [stickSide]: `calc(env(safe-area-inset-${stickSide}, 0px) + 0.75rem)`,
         }}
       >
         <div

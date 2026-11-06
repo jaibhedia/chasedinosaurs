@@ -1,9 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Play, RotateCcw, Users, Home, Music, Volume2, VolumeX } from 'lucide-react';
+import { Play, RotateCcw, Users, Home, Music, Volume2, VolumeX, ArrowLeftRight } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '@/store/gameStore';
 import { useSocket } from '@/providers/SocketProvider';
+import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 import { audioManager } from '@/utils/audioManager';
 import { clearMatchConfig } from '@/lib/matchConfig';
 
@@ -22,6 +23,9 @@ export default function GameMenu() {
   const [musicOn, setMusicOn] = useState(audioManager.isMusicOn());
   const toggleMute = () => { audioManager.toggleMute(); setMuted(audioManager.isMuted); };
   const toggleMusic = () => setMusicOn(audioManager.toggleMusic());
+  const isTouch = useIsTouchDevice();
+  const stickSide = useGameStore((s) => s.stickSide);
+  const setStickSide = useGameStore((s) => s.setStickSide);
 
   const online = gameMode === 'multiplayer';
 
@@ -105,6 +109,18 @@ export default function GameMenu() {
                 <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">{muted ? 'Muted' : 'Sound'}</span>
               </button>
             </div>
+
+            {/* Phones: which thumb steers. The power button moves to the other side. */}
+            {isTouch && (
+              <button
+                onClick={() => setStickSide(stickSide === 'right' ? 'left' : 'right')}
+                className="px-chip flex items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"
+                aria-label={`Move the stick to the ${stickSide === 'right' ? 'left' : 'right'}`}
+              >
+                <ArrowLeftRight className="h-4 w-4 sm:h-5 sm:w-5 text-[#5fcde4]" />
+                <span className="px-heading text-[10px] sm:text-xs uppercase tracking-wider text-[#f4e7c3]">Stick: {stickSide}</span>
+              </button>
+            )}
           </motion.div>
         </motion.div>
       )}

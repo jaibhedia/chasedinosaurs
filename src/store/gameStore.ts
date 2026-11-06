@@ -3,6 +3,8 @@ import { create } from 'zustand';
 export type GameMode = 'single-player' | 'multiplayer';
 /** Solo bot strength. Multiplayer fill-bots always play on 'normal'. */
 export type Difficulty = 'easy' | 'normal' | 'hard';
+/** Which side of a phone screen the joystick sits on; the power button takes the other. */
+export type StickSide = 'left' | 'right';
 export type GamePhase = 'countdown' | 'playing' | 'ended';
 export type PowerUpType = 'speed-boost' | 'earthquake' | 'shield' | 'teleport';
 
@@ -104,6 +106,7 @@ export interface GameObject {
 
 const USER_ID_STORAGE_KEY = 'chaseUserId';
 const DIFFICULTY_STORAGE_KEY = 'chase-difficulty';
+const STICK_SIDE_STORAGE_KEY = 'chase-stick-side';
 
 function readDifficulty(): Difficulty {
   try {
@@ -111,6 +114,13 @@ function readDifficulty(): Difficulty {
     if (v === 'easy' || v === 'normal' || v === 'hard') return v;
   } catch { /* storage blocked */ }
   return 'normal';
+}
+
+function readStickSide(): StickSide {
+  try {
+    if (localStorage.getItem(STICK_SIDE_STORAGE_KEY) === 'left') return 'left';
+  } catch { /* storage blocked */ }
+  return 'right';
 }
 
 function generateGuestId(): string {
@@ -124,6 +134,7 @@ interface GameState {
   selectedCharacter: Character | null;
   selectedMap: GameMap | null;
   difficulty: Difficulty;
+  stickSide: StickSide;
   gamePhase: GamePhase;
   players: Player[];
   gameObjects: GameObject[];
@@ -151,6 +162,7 @@ interface GameState {
   setCharacter: (character: Character) => void;
   setMap: (map: GameMap) => void;
   setDifficulty: (difficulty: Difficulty) => void;
+  setStickSide: (side: StickSide) => void;
   setGamePhase: (phase: GamePhase) => void;
   setPlayers: (players: Player[]) => void;
   updatePlayer: (id: string, updates: Partial<Player>) => void;
@@ -215,6 +227,7 @@ const matchState = {
 export const useGameStore = create<GameState>((set, get) => ({
   ...initialState,
   difficulty: readDifficulty(),
+  stickSide: readStickSide(),
 
   setUserId: (id) => set({ userId: id }),
   initUserId: () => {
@@ -235,6 +248,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   setDifficulty: (difficulty) => {
     try { localStorage.setItem(DIFFICULTY_STORAGE_KEY, difficulty); } catch { /* storage blocked */ }
     set({ difficulty });
+  },
+  setStickSide: (side) => {
+    try { localStorage.setItem(STICK_SIDE_STORAGE_KEY, side); } catch { /* storage blocked */ }
+    set({ stickSide: side });
   },
   setGamePhase: (phase) => set({ gamePhase: phase }),
   setPlayers: (players) => set({ players }),
