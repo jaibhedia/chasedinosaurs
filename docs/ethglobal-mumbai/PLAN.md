@@ -4,7 +4,7 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 12h 24m to freeze, 16h 24m to the deadline (2026-11-06 16:35 IST)
+> ⏱ Time left at last update: 10h 40m to freeze, 14h 40m to the deadline (2026-11-06 18:20 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
@@ -35,6 +35,7 @@ view, because the spectator shows the live board.
 | 3 | F2 | Server: steals and points in `Match`, a 1 s `match-scores` broadcast. Client: a live board in the HUD and points on the results screen | 45 min | Shipped |
 | 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Shipped |
 | 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Shipped |
+| 6 | F6 | A shared `readPad()` for the game and the check; a Controls panel (3 tabs, live highlight, stick-side preview); `/settings` from home; Controls in the in-game menu | 40 min | Building |
 
 ## Event go-live (today)
 

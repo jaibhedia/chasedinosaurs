@@ -31,7 +31,8 @@ Tag `pre-ethglobal-mumbai-2026` points at `1dcafa3`, the last commit before the 
   supplied the ETHGlobal rules and set up this workflow.
 - Karmanya specified the scoring: 1 point a second with the egg, 5 per steal, 30 for a win.
   Karmanya also wrote the leaderboard rules: a live per-match board, plus all-time boards ranked
-  on best single matches, not sums.
+  on best single matches, not sums. Karmanya then asked for a Settings option showing the
+  controls for keyboard and mouse, controller and phone (P2).
 
 **AI (Claude Code):** implementation under that direction: drafting code to the PRD's acceptance
 criteria, refactors, tests, and these docs.
@@ -127,3 +128,17 @@ Corrections and scope changes are kept. Approvals and small follow-ups are left 
 > on that integrate" these not redo or do major overhaul now we need the game in like 2-3 hrs for
 > event 3) also make the pc version support xbox controllr 4) make the control in phone
 > interchangable to left or either right sides of the screen based on preerence thats it
+
+### P2 · 2026-11-06, about 18:10 IST · Karmanya's full message (adds F6)
+
+Sent in reply to the open question about the cut-off "also increase the …" in P1. The first two
+messages are the same as in P1 and are elided here.
+
+> heres the msg
+>
+> [pasted]
+> [11/6, 3:56 PM] Karmanya (KARMA) CSD: [same as P1]
+> [11/6, 3:59 PM] Karmanya (KARMA) CSD: [same as P1]
+> [11/6, 4:00 PM] Karmanya (KARMA) CSD: Settings option to check controls for keyboard/mouse & Controller
+> And also phone
+> [end paste]

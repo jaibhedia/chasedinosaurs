@@ -1,6 +1,6 @@
 # Chase Dinosaurs · ETHGlobal Mumbai 2026 · PRD
 
-> A living document, updated after every feature push. Last update: 2026-11-06 16:35 IST at `a360b12`.
+> A living document, updated after every feature push. Last update: 2026-11-06 18:20 IST at `c48ec1d`.
 > Plan and build log: [PLAN.md](PLAN.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md)
 
 ## 1. Summary
@@ -9,8 +9,9 @@ Chase Dinosaurs is getting a competitive layer for the event floor. Players scor
 holding and stealing the egg and for winning, and a live leaderboard shows every match as it
 happens. An all-time board keeps each player's best single match. An admin-only spectator view
 lets organisers put any live match on a big screen. Xbox controllers work on PC, and phone
-players can put the stick on either side. Wallet identity replaces email for admins when the
-Web3 layer lands.
+players can put the stick on either side. A Settings screen shows the controls for keyboard and
+mouse, controller and phone, and lights up whatever you press, so a player can check a pad
+before a match. Wallet identity replaces email for admins when the Web3 layer lands.
 
 ## 2. Track and what counts as new
 
@@ -19,7 +20,7 @@ Web3 layer lands.
 - **Baseline:** tag `pre-ethglobal-mumbai-2026` → `1dcafa3` (2026-10-07). Only work after it is
   judged.
 - **Team:** Shantanu Swami (Abstract Studio). Karmanya wrote the points and leaderboard rules
-  (prompt P1). <confirm the roster on the Hacker Dashboard>
+  (prompt P1) and asked for the controls screen (P2). <confirm the roster on the Hacker Dashboard>
 - **Built before the event (not judged):**
   - **The game:** a Phaser + React chase game. Solo play is against three bots on three
     difficulties. Online, up to four players connect through a Socket.IO server that decides egg
@@ -52,6 +53,7 @@ Status: Planned → Building → Shipped, or Cut (with the reason in §9).
 | F3 | All-time leaderboard | A reason to come back and beat a best | Three tabs: Longest egg hold and Most steals (each player's best single match, not a sum) and Wins. Online, server-verified matches only, with humans only. It survives a server restart. | Pract, WOW | — | Three tabs, your name highlighted | Shipped | `6f37c94`, `17be8bb` |
 | F4 | Xbox controller on PC | Play at the booth from a couch | The left stick or D-pad moves (analog). A, RB or RT fires the power, Start opens the menu and B closes it. Works with any standard-mapping pad in Chrome, Edge or Firefox, plugged in at any time. | UX | — | Playing with a pad | Shipped | `ec97817` |
 | F5 | Stick on either side (phones) | Left-handed players aren't stuck | The stick goes left or right and the power button takes the other side. The choice is set in the in-game menu and remembered on the device. | UX | — | Flip it mid-match | Shipped | `4631219` |
+| F6 | Controls in Settings | Players can see the controls for their device, and check a pad works, before or during a match | Home has a Settings button, and the in-game menu has Controls. Both show three tabs (Keyboard & mouse, Controller, Phone) that match the real bindings, and open on the tab for the device in use. A held key or pad button lights up its row, and the Controller tab names the connected pad and moves a dot with the stick. The Phone tab sets the stick side (F5) with a preview. | UX, Pract | — | Plug in a pad, press A: the Power row lights up | Building | — |
 
 ## 5. Partner prizes
 
@@ -79,10 +81,12 @@ that fit this game and accept Continuity projects are below. Pick at most 3.
 - Wallet or address identity. Admins use email now, and an address comes with the Web3 layer.
 - Partner integrations in this build (recommended in §5, not built yet).
 - Solo matches on the all-time board, because the server can't verify them.
+- Rebinding keys or buttons. The Controls screen shows the bindings; it doesn't change them.
 
 ## 8. Open questions and risks
 
-- The prompt says "also increase the …" and is cut off. What should increase? · Shantanu · before freeze
+- ~~The prompt says "also increase the …" and is cut off.~~ Answered by pasting Karmanya's full
+  message (P2), which adds one request: the controls in Settings, now F6.
 - The Wins tab counts total wins. A single match can only give 0 or 1, so "best single match"
   can't apply there. · Karmanya · confirm
 - The leaderboard file lives on the server's disk. Render's free plan wipes it on a restart or
@@ -93,3 +97,4 @@ that fit this game and accept Continuity projects are below. Pick at most 3.
 ## 9. Change log
 
 - 2026-11-06 16:14 IST · PRD created from the feature list (P1).
+- 2026-11-06 18:10 IST · F6 (controls in Settings) added from Karmanya's full message (P2).
