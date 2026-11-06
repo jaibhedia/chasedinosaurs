@@ -87,7 +87,7 @@ export default function GameMenu() {
         >
           <div className={`absolute inset-0 ${online ? 'bg-black/30' : 'bg-black/55'}`} onClick={resume} />
           <motion.div
-            className={`relative px-panel px-4 py-4 sm:px-8 sm:py-7 flex flex-col items-stretch gap-2 sm:gap-3 ${view === 'controls' ? 'w-[min(92vw,440px)]' : 'w-[min(82vw,320px)]'} max-h-[88dvh] overflow-y-auto`}
+            className={`relative px-panel px-4 py-4 sm:px-8 sm:py-7 flex flex-col items-stretch gap-2 sm:gap-3 ${view === 'controls' ? 'w-[min(92vw,520px)]' : 'w-[min(82vw,320px)]'} max-h-[88dvh] overflow-y-auto`}
             initial={{ scale: 0.85, y: 20 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.85, y: 20 }}
@@ -99,7 +99,7 @@ export default function GameMenu() {
                 <p className="px-heading text-center text-base sm:text-2xl mb-0.5 sm:mb-1" style={{ color: '#ffc93c', textShadow: '3px 3px 0 #11111c' }}>
                   CONTROLS
                 </p>
-                <ControlsPanel live={online} />
+                <ControlsPanel live={online} bare />
                 <button
                   onClick={() => setView('menu')}
                   className="px-chip flex items-center justify-center gap-2 px-3 py-2 sm:py-3 transition-all hover:brightness-110 active:translate-y-px"

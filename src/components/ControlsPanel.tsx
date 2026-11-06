@@ -51,10 +51,11 @@ function phoneRows(stick: StickSide): Row[] {
   ];
 }
 
-const TABS: Array<{ id: Device; label: string; icon: typeof Keyboard }> = [
-  { id: 'keyboard', label: 'Keyboard & mouse', icon: Keyboard },
-  { id: 'controller', label: 'Controller', icon: Gamepad2 },
-  { id: 'phone', label: 'Phone', icon: Smartphone },
+// `short` fits a tab on one line at every width; `label` is the accessible name.
+const TABS: Array<{ id: Device; label: string; short: string; icon: typeof Keyboard }> = [
+  { id: 'keyboard', label: 'Keyboard & mouse', short: 'Keyboard', icon: Keyboard },
+  { id: 'controller', label: 'Controller', short: 'Controller', icon: Gamepad2 },
+  { id: 'phone', label: 'Phone', short: 'Phone', icon: Smartphone },
 ];
 
 const MOVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']);
@@ -147,29 +148,29 @@ function KeyCap({ children }: { children: ReactNode }) {
 
 function Rows({ rows, active }: { rows: Row[]; active: Action[] }) {
   return (
-    <ul className="flex flex-col gap-1.5">
+    <ul className="flex flex-col gap-1">
       {rows.map((r) => {
         const on = active.includes(r.action);
         return (
           <li
             key={r.action}
-            className={`pixel-border flex flex-col gap-1 px-2 py-1.5 transition-colors ${on ? 'bg-[#2f5a1f]' : 'bg-[#4d2813]'}`}
-            style={on ? { borderColor: '#6ab04c' } : undefined}
+            // Flat strips, not framed boxes: the panel around them is the frame.
+            className={`flex flex-col gap-1 border-l-4 px-3 py-2 transition-colors ${on ? 'border-[#6ab04c] bg-[#2f5a1f]' : 'border-transparent bg-black/25'}`}
             data-testid={`controls-row-${r.action}`}
             data-active={on || undefined}
           >
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-black text-white sm:text-base">{r.label}</span>
+              <span className="px-heading text-[9px] uppercase tracking-wider text-[#f4e7c3] sm:text-[10px]">{r.label}</span>
               <span className="flex flex-wrap items-center justify-end gap-1">
                 {r.keys.map((k, i) => (
                   <span key={i} className="flex items-center gap-1">
-                    {i > 0 && <span className="text-xs text-[#f4e7c3]/60">or</span>}
+                    {i > 0 && <span className="text-sm text-[#f4e7c3]/60">or</span>}
                     <KeyCap>{k}</KeyCap>
                   </span>
                 ))}
               </span>
             </div>
-            {r.note && <p className="text-xs leading-snug text-[#f4e7c3]/70">{r.note}</p>}
+            {r.note && <p className="text-sm leading-tight text-[#f4e7c3]/60 sm:text-base">{r.note}</p>}
           </li>
         );
       })}
@@ -192,9 +193,11 @@ function PhonePreview({ stick }: { stick: StickSide }) {
 interface ControlsPanelProps {
   /** Opened from the menu of an online match, which keeps going behind it. */
   live?: boolean;
+  /** Inside another panel (the in-game menu), so it draws no frame of its own. */
+  bare?: boolean;
 }
 
-export default function ControlsPanel({ live = false }: ControlsPanelProps) {
+export default function ControlsPanel({ live = false, bare = false }: ControlsPanelProps) {
   const isTouch = useIsTouchDevice();
   const padConnected = useGamepadConnected();
   const [tab, setTab] = useState<Device>(() => (padConnected ? 'controller' : isTouch ? 'phone' : 'keyboard'));
@@ -217,21 +220,23 @@ export default function ControlsPanel({ live = false }: ControlsPanelProps) {
             type="button"
             role="tab"
             aria-selected={t.id === tab}
+            aria-label={t.label}
+            title={t.label}
             onClick={() => setTab(t.id)}
-            className={`px-chip flex items-center justify-center gap-1.5 px-2 py-2 transition-all ${t.id === tab ? 'brightness-125' : 'opacity-60 hover:opacity-90'}`}
+            className={`px-chip flex min-w-0 items-center justify-center gap-1.5 px-2 py-2 transition-all ${t.id === tab ? 'brightness-125' : 'opacity-60 hover:opacity-90'}`}
             data-testid={`controls-tab-${t.id}`}
           >
             <t.icon className="h-4 w-4 shrink-0 text-[#5fcde4]" />
-            <span className="px-heading text-center text-[8px] uppercase leading-snug tracking-wider text-[#f4e7c3] sm:text-[9px]">{t.label}</span>
+            <span className="px-heading truncate whitespace-nowrap text-[8px] uppercase tracking-wider text-[#f4e7c3] sm:text-[9px]">{t.short}</span>
           </button>
         ))}
       </div>
 
-      <div className="px-panel flex flex-col gap-2 p-3" role="tabpanel">
+      <div className={bare ? 'flex flex-col gap-2' : 'px-panel flex flex-col gap-2 p-3'} role="tabpanel">
         {tab === 'keyboard' && (
           <>
             <Rows rows={KEYBOARD} active={heldKeys} />
-            <p className="text-xs text-[#f4e7c3]/70">Press a key to check it: its row lights up.</p>
+            <p className="text-sm text-[#f4e7c3]/60">Press a key to check it: its row lights up.</p>
           </>
         )}
 
@@ -242,17 +247,17 @@ export default function ControlsPanel({ live = false }: ControlsPanelProps) {
               <span className="relative flex h-10 w-10 shrink-0 items-center justify-center border-2 border-[#f4e7c3]/40 bg-black/30" aria-hidden>
                 <span ref={dot} className="h-3 w-3 bg-[#ffc93c]" />
               </span>
-              <p className="text-sm leading-snug text-[#f4e7c3]" data-testid="controls-pad-status">
+              <p className="text-sm leading-snug text-[#f4e7c3] sm:text-base" data-testid="controls-pad-status">
                 {pad.name
-                  ? <><span className="font-black text-[#6ab04c]">{pad.name}</span> connected. Press a button to check it.</>
+                  ? <><span className="text-[#6ab04c]">{pad.name}</span> connected. Press a button to check it.</>
                   : 'No controller yet. Plug one in or pair it, then press any button: browsers only show a pad after its first press.'}
               </p>
             </div>
             {!pad.standard && (
-              <p className="text-xs text-[#e8503a]">This pad doesn&apos;t report the standard layout, so its buttons may not match.</p>
+              <p className="text-sm text-[#e8503a]">This pad doesn&apos;t report the standard layout, so its buttons may not match.</p>
             )}
             <Rows rows={CONTROLLER} active={pad.active} />
-            <p className="text-xs text-[#f4e7c3]/70">Xbox, PlayStation and most USB or Bluetooth pads work in Chrome, Edge and Firefox.</p>
+            <p className="text-sm text-[#f4e7c3]/60">Xbox, PlayStation and most USB or Bluetooth pads work in Chrome, Edge and Firefox.</p>
           </>
         )}
 
@@ -284,7 +289,7 @@ export default function ControlsPanel({ live = false }: ControlsPanelProps) {
         )}
 
         {live && tab !== 'phone' && (
-          <p className="text-xs text-[#ffc93c]">The match keeps going: anything you press here moves your dino or fires your power.</p>
+          <p className="text-sm text-[#ffc93c]">The match keeps going: anything you press here moves your dino or fires your power.</p>
         )}
       </div>
     </div>
