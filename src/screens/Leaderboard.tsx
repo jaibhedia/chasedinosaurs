@@ -4,10 +4,12 @@ import { ArrowLeft, Crown, Egg, Zap } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { resolveSocketUrl } from '@/config';
+import { WorldVerify } from '@/components/WorldVerify';
 
 type Board = 'hold' | 'steals' | 'wins';
 interface Row { rank: number; name: string; value: number; bestPoints: number; you: boolean }
-interface BoardData { entries: Row[]; me: Row | null }
+/** `verifiedOnly`: World ID is on, so only verified humans rank (server/src/world.ts). */
+interface BoardData { entries: Row[]; me: Row | null; verifiedOnly?: boolean; youVerified?: boolean }
 
 const TABS: Array<{ id: Board; label: string; icon: typeof Egg; show: (v: number) => string; note: string }> = [
   { id: 'hold', label: 'Longest hold', icon: Egg, show: (v) => `${Math.floor(v / 1000)}s`, note: 'Longest time holding the egg in one online match.' },
@@ -29,6 +31,8 @@ export default function Leaderboard() {
   const [board, setBoard] = useState<Board>('hold');
   const [data, setData] = useState<BoardData | null>(null);
   const [failed, setFailed] = useState(false);
+  // Bumped after a World ID verification, to reload the board with the player on it.
+  const [reload, setReload] = useState(0);
   usePageTitle('Leaderboard');
 
   useEffect(() => { setMe(initUserId()); }, [initUserId]);
@@ -46,7 +50,7 @@ export default function Leaderboard() {
     load();
     const t = window.setInterval(load, REFRESH_MS);
     return () => { cancelled = true; window.clearInterval(t); };
-  }, [board, me]);
+  }, [board, me, reload]);
 
   const tab = TABS.find((t) => t.id === board)!;
   const meOffBoard = data?.me && !data.entries.some((e) => e.you) ? data.me : null;
@@ -67,6 +71,10 @@ export default function Leaderboard() {
             Leaderboard
           </h1>
         </div>
+
+        {data?.verifiedOnly && !data.youVerified && me && (
+          <WorldVerify userId={me} onVerified={() => setReload((n) => n + 1)} />
+        )}
 
         <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Leaderboard">
           {TABS.map((t) => (
@@ -91,7 +99,9 @@ export default function Leaderboard() {
           ) : !data ? (
             <p className="text-center text-sm text-[#f4e7c3]/80">Loading…</p>
           ) : data.entries.length === 0 ? (
-            <p className="text-center text-sm text-[#f4e7c3]/80">No online matches yet. Play one to get on the board.</p>
+            <p className="text-center text-sm text-[#f4e7c3]/80">
+              {data.verifiedOnly ? 'No verified humans on this board yet.' : 'No online matches yet. Play one to get on the board.'}
+            </p>
           ) : (
             <ol className="flex flex-col gap-1.5" data-testid="leaderboard-rows">
               {data.entries.map((e) => (
@@ -117,7 +127,11 @@ export default function Leaderboard() {
           )}
         </div>
 
-        <p className="text-center text-xs text-[#f4e7c3]/70">{tab.note}</p>
+        <p className="text-center text-xs text-[#f4e7c3]/70">
+          {tab.note}
+          {data?.verifiedOnly && ' Verified humans only, one row each (World ID).'}
+          {data?.youVerified && " You're verified."}
+        </p>
       </div>
     </main>
   );
