@@ -4,7 +4,7 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 6h 47m to freeze, 10h 47m to the deadline (2026-11-06 22:12 IST)
+> ⏱ Time left at last update: 6h 05m to freeze, 10h 05m to the deadline (2026-11-06 22:55 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
@@ -42,7 +42,9 @@ view, because the spectator shows the live board.
 
 ## Event go-live (today)
 
-- [ ] Merge PR #6 with a **merge commit**. Vercel deploys the web app and Render the server.
+- [x] Merge PR #6 with a merge commit (20:36 IST, `5355089`).
+- [ ] Merge [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7) (F7 World ID, F8 0G
+  receipts) with a **merge commit**. Vercel deploys the web app and Render the server.
 - [ ] Render env: `ADMIN_EMAILS` (comma-separated) and `ADMIN_PASSCODE`. Without the emails
   nobody can spectate.
 - [ ] Leaderboard storage (free): at upstash.com create a Redis database, copy its REST URL and
@@ -50,13 +52,17 @@ view, because the spectator shows the live board.
   open `<server>/health` and check `leaderboard.store` is `"upstash"`
 - [ ] Optional: stop the ~1-minute wake-up after 15 idle minutes, with the Starter plan
   ($7/month) or a free uptime check that loads `/health` every 10 minutes
-- [ ] World ID (F7): at developer.world.org create an app, enable World ID 4.0 and create the
-  action `chase-leaderboard` in **production**. Set `WORLD_APP_ID`, `WORLD_RP_ID` and
-  `WORLD_RP_SIGNING_KEY` on Render. `/health` then shows `world.enabled: true`; verify once with
-  World App on a phone
-- [ ] 0G (F8): at pc.0g.ai create an `sk-` key and deposit 0G. Set `AI_BASE_URL` to
-  `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL` (e.g. `glm-5.2`). Play a match,
-  then copy a request id from `<server>/ai/receipts` into the 0G submission
+- [ ] World ID (F7), after Upstash (otherwise a restart forgets who is verified): at
+  developer.world.org create an app, enable World ID 4.0 and create the action
+  `chase-leaderboard` in **production**. Copy the signing key when it's shown; it's shown once.
+  Set `WORLD_APP_ID`, `WORLD_RP_ID` and `WORLD_RP_SIGNING_KEY` on Render. `/health` then shows
+  `world.enabled: true`. The all-time board is empty until someone verifies, so verify once with
+  World App on a phone straight away
+- [ ] 0G (F8): at pc.0g.ai connect a wallet, deposit 0G and create an `sk-` key (shown once). Set
+  `AI_BASE_URL` to `https://router-api.0g.ai/v1`, `AI_API_KEY` and `AI_MODEL` (`0gm-1.0-35b-a3b`,
+  or `gpt-4.1-nano` if the bots stay quiet). Play a match, then copy a request id from
+  `<server>/ai/receipts` into the 0G submission. If the list stays empty, the calls are failing or
+  slower than the bots' 1.1 s budget; try the other model
 - [ ] On the live site, check that:
   - points tick, and a steal adds 5
   - `/leaderboard` updates after an online match
@@ -287,7 +293,7 @@ One entry per push, oldest first, written by the post-push routine.
   25-check browser suite and the small-phone touch test pass. `npm run build` ✅.
 
 ### F7 · Verified humans on the all-time board (World ID) · Shipped · 2026-11-06 22:07 IST
-- **Commits:** `cfd68cc` (server), `2e74e23` (client), `6df6d83` (config) · PR #6
+- **Commits:** `cfd68cc` (server), `2e74e23` (client), `6df6d83` (config) · PR #7
 - **Files:**
   - Server: `server/src/world.ts` (new), `server/src/world.test.ts` (new),
     `server/src/leaderboard.ts`, `server/src/leaderboard.test.ts`, `server/src/index.ts`,
@@ -327,7 +333,7 @@ One entry per push, oldest first, written by the post-push routine.
   Wins farmed with unverified alt tabs can still feed one verified row (PRD §8).
 
 ### F8 · 0G Compute receipts for the bots' AI · Shipped · 2026-11-06 22:12 IST
-- **Commits:** `3967eaa` (server), `4a78f68` (results screen), `9635ddf` (config) · PR #6
+- **Commits:** `3967eaa` (server), `4a78f68` (results screen), `9635ddf` (config) · PR #7
 - **Files:** `server/src/ai/receipts.ts` (new), `server/src/botVoice.test.ts` (new),
   `server/src/ai/provider.ts`, `server/src/botVoice.ts`, `server/src/index.ts`,
   `src/screens/Results.tsx`, `render.yaml`, `server/.env.example` · +135/−20
@@ -351,6 +357,19 @@ One entry per push, oldest first, written by the post-push routine.
   - Not yet run against the real Router (it needs an `sk-` key and a 0G deposit).
 - **Next:** point `AI_*` at `router-api.0g.ai`, play one match, and copy a request id from
   `/ai/receipts` into the 0G submission.
+
+### Process · F7 and F8 wait in PR #7 · 2026-11-06 22:55 IST
+- **Commits:** this docs commit · [PR #7](https://github.com/jaibhedia/chasedinosaurs/pull/7)
+- PR #6 was merged with a merge commit (`5355089`) at 20:36 IST, before F7 and F8 were pushed.
+  Their seven commits reached `new` after the merge, so they wait in PR #7, and nothing in them is
+  live until it's merged.
+- **Live check (22:30 IST):** Render's `/health` shows the bots on Groq (`llama-3.1-8b-instant`)
+  and `leaderboard.store: "file"`, so Upstash isn't set yet. CORS answers only
+  `chasedinosaurs.fun` and `www.chasedinosaurs.fun`.
+- **0G model:** the Router's public `/v1/models` lists `temperature` and `max_tokens`, the two
+  parameters the bots send, for 0G's own `0gm-1.0-35b-a3b`. `glm-5.2`, the earlier example, lists
+  neither, so the go-live list now suggests `0gm-1.0-35b-a3b`, with `gpt-4.1-nano` as a fallback.
+  The Router's latency against the bots' 1.1 s budget is still untested.
 
 ## Submission checklist
 
