@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 12h 43m to freeze, 16h 43m to the deadline (2026-11-06 16:17 IST)
+> ⏱ Time left at last update: 12h 37m to freeze, 16h 37m to the deadline (2026-11-06 16:22 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: ec97817 -->
+<!-- last-logged: ee51eb0 -->
 
 ## Eligibility gates
 
@@ -32,7 +32,7 @@ view, because the spectator shows the live board.
 |---|---|---|---|---|
 | 1 | F5 | Stick-side preference in the store; MobileControls flips; toggle in the menu | 15 min | Shipped |
 | 2 | F4 | Gamepad polling into the shared touch-input channel; Start/B for the menu | 25 min | Shipped |
-| 3 | F2 | Server: steals and points in `Match`, a 1 s `match-scores` broadcast. Client: a live board in the HUD and points on the results screen | 45 min | Planned |
+| 3 | F2 | Server: steals and points in `Match`, a 1 s `match-scores` broadcast. Client: a live board in the HUD and points on the results screen | 45 min | Shipped |
 | 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Planned |
 | 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Planned |
 
@@ -88,6 +88,33 @@ One entry per push, oldest first, written by the post-push routine.
 - **Verified:** `npm run build` ✅. Not yet tested with a physical pad. Browsers only expose a
   pad after its first button press.
 - **Next / known issues:** screens outside a match (home, results) don't respond to the pad yet.
+
+### F2 · Points and live match leaderboard · Shipped · 2026-11-06 16:22 IST
+- **Commits:** `5ae683a` (server), `ee51eb0` (client) · PR #6
+- **Files:**
+  - Server: `server/src/match.ts`, `server/src/match.test.ts`, `server/src/index.ts`
+  - Client: `src/lib/scoring.ts` (new), `src/components/LiveScoreboard.tsx` (new),
+    `src/scene/gameScene.ts`, `src/store/gameStore.ts`, `src/components/GameHUD.tsx`,
+    `src/screens/Results.tsx`
+  - Size: +230/−25
+- **New vs reused:**
+  - New: steal counting, and the points formula on the server and the client. A
+    `match-scores` broadcast goes out once a second and right after each steal. Also the live
+    board in the HUD, and results ranked by points with held time and steals.
+  - Reused: the server's authoritative egg claims (which already reported the previous
+    holder, so a steal needed no new tracking) and the scene's held-time counter.
+- **AI:** Claude Code (Opus 5.5) wrote the code and the test. **Human:** Karmanya set the
+  scoring rules (P1), and Shantanu asked for them to be built on the existing system rather
+  than as an overhaul.
+- **Challenge:** every screen has to show the same points online. The server is the source of
+  truth: it sends its tally every second and right after each steal. Between tallies, each
+  client keeps the holder's seconds ticking, so the board doesn't stutter.
+- **Verified:**
+  - Server tests 8/8, including a new one on the points maths: 2.5 s held plus a steal is 7
+    live, and a 110 s holder who stole once and won ends on 145.
+  - Typecheck and `npm run build` ✅. Not yet played end to end.
+- **Next / known issues:** the +30 win bonus appears on the results, not on the live board,
+  since nobody has won until the buzzer.
 
 ## Submission checklist
 
