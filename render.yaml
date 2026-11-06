@@ -60,6 +60,18 @@ services:
       - key: DATA_DIR
         sync: false
 
+      # --- World ID: verified humans only on the all-time board ------------------
+      # From the World Developer Portal (developer.world.org): create an app, enable World ID
+      # 4.0, and create the action "chase-leaderboard" in the production environment.
+      # Unset: World ID is off and everyone ranks, as before.
+      - key: WORLD_APP_ID
+        sync: false
+      - key: WORLD_RP_ID
+        sync: false
+      # SECRET. The RP signing key.
+      - key: WORLD_RP_SIGNING_KEY
+        sync: false
+
       # --- Admin spectator mode (/admin) ------------------------------------------
       # Comma-separated admin emails. Unset: nobody can spectate.
       - key: ADMIN_EMAILS
