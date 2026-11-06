@@ -21,6 +21,7 @@
 // env vars directly. Never commit the real .env.
 import 'dotenv/config';
 import { createServer } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -321,9 +322,33 @@ const io = new Server(httpServer, {
   maxHttpBufferSize: 1e5, // 100 KB
 });
 
+// --- Admin spectators --------------------------------------------------------
+/**
+ * Admins can watch any room without taking a seat. Identity is an email on the
+ * ADMIN_EMAILS allowlist for now (a wallet address once the Web3 layer is back). Anyone can
+ * type an email, so with ADMIN_PASSCODE set they need that too.
+ */
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean),
+);
+const ADMIN_PASSCODE = process.env.ADMIN_PASSCODE || '';
+if (ADMIN_EMAILS.size > 0 && !ADMIN_PASSCODE) {
+  console.warn('[admin] ADMIN_PASSCODE is unset: anyone who types an admin email can spectate.');
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
 interface SocketData {
   userId: string | null;
   roomCode: string | null;
+  /** Signed in as an admin (admin-login). */
+  admin?: boolean;
+  /** The room this admin is watching. Spectators are never in room.players. */
+  spectating?: string | null;
 }
 
 io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
@@ -722,6 +747,62 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     if (typeof ack !== 'function') return;
     if (!rateOk(`${socket.id}:roast`, 3, 30_000)) { ack({ line: null }); return; }
     ack({ line: await matchRoast(payload?.stats ?? [], payload?.winner) });
+  });
+
+  /** Admin sign-in for spectating: an allowlisted email, plus the passcode when one is set. */
+  socket.on('admin-login', (payload: any, ack?: (res: { ok: boolean; error?: string }) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!rateOk(`${socket.id}:admin`, 5, 60_000)) { ack({ ok: false, error: 'Too many tries. Wait a minute.' }); return; }
+    const email = cleanStr(payload?.email, 120).trim().toLowerCase();
+    const ok = ADMIN_EMAILS.has(email) && (!ADMIN_PASSCODE || safeEqual(cleanStr(payload?.passcode, 200), ADMIN_PASSCODE));
+    socket.data.admin = ok;
+    if (!ok) console.warn(`[admin] refused sign-in for "${email}"`);
+    ack(ok ? { ok: true } : { ok: false, error: "That email and passcode don't match an admin." });
+  });
+
+  /** Admins only: every room, live, for the spectator picker. */
+  socket.on('admin-rooms', (ack?: (rooms: unknown[]) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!socket.data.admin) { ack([]); return; }
+    const now = Date.now();
+    ack([...rooms.entries()].map(([code, room]) => ({
+      code,
+      players: room.players.map((p) => p.player_name),
+      isPublic: room.isPublic,
+      started: room.started,
+      secondsLeft: room.match ? Math.max(0, Math.ceil((room.match.endAt - now) / 1000)) : null,
+    })));
+  });
+
+  /**
+   * Admins only: watch a room. The socket joins the room's broadcasts (positions, egg,
+   * scores, results) but never its roster, so it takes no seat, can't send gameplay events
+   * (isRoomMember fails) and never steers the bots. Safe to repeat: the scene asks again
+   * once it has loaded, to pick up the egg and scores of a match already running.
+   */
+  socket.on('spectate', (payload: any, ack?: (res: unknown) => void) => {
+    if (typeof ack !== 'function') return;
+    if (!socket.data.admin) { ack({ ok: false, error: 'Sign in as an admin first.' }); return; }
+    const rc = cleanStr(payload?.roomCode, 6).toUpperCase();
+    const room = rooms.get(rc);
+    if (!room) { ack({ ok: false, error: 'That room has closed.' }); return; }
+    if (socket.data.spectating && socket.data.spectating !== rc) socket.leave(socket.data.spectating);
+    socket.data.spectating = rc;
+    socket.join(rc);
+    ack({
+      ok: true,
+      roomCode: rc,
+      mapId: room.mapId,
+      players: publicPlayers(room),
+      serverStartTime: room.serverStartTime,
+      egg: room.match?.owner() ?? null,
+      scores: room.match?.scores() ?? [],
+    });
+  });
+
+  socket.on('stop-spectating', () => {
+    if (socket.data.spectating) socket.leave(socket.data.spectating);
+    socket.data.spectating = null;
   });
 
   // Lightweight RTT probe for the optional in-game net-stats overlay. Echoes the

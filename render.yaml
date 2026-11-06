@@ -51,3 +51,11 @@ services:
       # every restart and deploy; attach a persistent disk and set this to its mount path.
       - key: DATA_DIR
         sync: false
+
+      # --- Admin spectator mode (/admin) ------------------------------------------
+      # Comma-separated admin emails. Unset: nobody can spectate.
+      - key: ADMIN_EMAILS
+        sync: false
+      # SECRET. Required alongside the email; without it, an email alone gets in.
+      - key: ADMIN_PASSCODE
+        sync: false
