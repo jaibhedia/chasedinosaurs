@@ -65,6 +65,8 @@ export interface Player {
   eggHoldCount: number;
   /** Total time this player has held the egg this match (ms). */
   eggHeldMs?: number;
+  /** Times this player took the egg from another player this match (5 points each). */
+  steals?: number;
   userId?: string;
   targetX?: number;
   targetY?: number;
@@ -87,6 +89,17 @@ export interface Player {
   slowedUntil?: number;
   speedBoostActive?: boolean;
   trail?: Array<{ x: number; y: number; alpha: number }>;
+}
+
+/** One row of the live in-match leaderboard, published by the scene a few times a second. */
+export interface ScoreRow {
+  id: string;
+  name: string;
+  points: number;
+  heldS: number;
+  steals: number;
+  hasEgg: boolean;
+  isSelf: boolean;
 }
 
 export interface GameObject {
@@ -155,6 +168,8 @@ interface GameState {
   paused: boolean;
   /** Throttled snapshot of world positions for the minimap (world dims + blips). */
   minimap: { w: number; h: number; dots: MinimapDot[] };
+  /** Live in-match leaderboard rows (unsorted). */
+  scoreboard: ScoreRow[];
 
   setUserId: (id: string | null) => void;
   initUserId: () => string;
@@ -177,6 +192,7 @@ interface GameState {
   setMultiplayerHiddenFill: (value: boolean) => void;
   setPaused: (value: boolean) => void;
   setMinimap: (minimap: { w: number; h: number; dots: MinimapDot[] }) => void;
+  setScoreboard: (rows: ScoreRow[]) => void;
   setEgg: (ownerId: string | null, position: { x: number; y: number } | null) => void;
   setLastEggHolderId: (id: string | null) => void;
   /** Clear everything about the last match, keeping who you are and what you picked. */
@@ -206,6 +222,7 @@ const initialState = {
   multiplayerHiddenFill: false,
   paused: false,
   minimap: { w: 0, h: 0, dots: [] as MinimapDot[] },
+  scoreboard: [] as ScoreRow[],
 };
 
 /** Per-match fields: cleared between matches, unlike identity and menu choices. */
@@ -222,6 +239,7 @@ const matchState = {
   gameMessage: '',
   paused: false,
   minimap: { w: 0, h: 0, dots: [] as MinimapDot[] },
+  scoreboard: [] as ScoreRow[],
 };
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -271,6 +289,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   setMultiplayerHiddenFill: (value) => set({ multiplayerHiddenFill: value }),
   setPaused: (value) => set({ paused: value }),
   setMinimap: (minimap) => set({ minimap }),
+  setScoreboard: (scoreboard) => set({ scoreboard }),
   setEgg: (ownerId, position) => set({ eggOwnerId: ownerId, eggPosition: position }),
   setLastEggHolderId: (id) => set({ lastEggHolderId: id }),
   resetMatch: () => set({ ...matchState }),

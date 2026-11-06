@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { useGameStore, Player, GameObject, AgentIntent, MinimapDot } from '@/store/gameStore';
+import { useGameStore, Player, GameObject, AgentIntent, MinimapDot, ScoreRow } from '@/store/gameStore';
 import { characters } from '@/data/characters';
 import { audioManager } from '@/utils/audioManager';
 import { buzz } from '@/lib/haptics';
@@ -9,6 +9,7 @@ import { getGameSocket, getServerOffset } from '@/lib/socketBridge';
 import { TUNING, PERSONAS, PERSONA_SPEED, assignRoles, ramp, type BotTuning, type Role } from './botTactics';
 import type { Difficulty } from '@/store/gameStore';
 import { touchInput, resetTouchInput } from '@/lib/touchInput';
+import { matchPoints } from '@/lib/scoring';
 
 const CHAR_SPRITES: Record<string, { name: string }> = {
   doux: { name: 'doux' },
@@ -156,6 +157,10 @@ export class GameScene extends Phaser.Scene {
   private onMatchResult?: (payload: any) => void;
   private onRoomRejoined?: (payload: any) => void;
   private onPowerUsed?: (payload: any) => void;
+  private onMatchScores?: (payload: any) => void;
+  /** Live leaderboard: when we last published it and what, so the HUD re-renders only on change. */
+  private lastScoreboardAt = 0;
+  private lastScoreboardKey = '';
   /** Highest egg-owner sequence applied; older updates are ignored. */
   private eggSeq = 0;
   /** Last claim sent per claimer, to throttle claims while touching. */
@@ -768,6 +773,7 @@ export class GameScene extends Phaser.Scene {
     // dropping mid-match doesn't leave the agents frozen for everyone else.
     this.maybeTakeOverAgents(performance.now());
     this.updateMinimap(_time);
+    this.updateScoreboard(_time);
     this.updateEggArrow();
 
     // Solo: the pause menu stops the clock. Online: the room's clock never stops, so the
@@ -2142,6 +2148,9 @@ export class GameScene extends Phaser.Scene {
       // Egg ownership, decided by the server.
       this.onEggOwner = (payload: any) => this.applyEggOwner(payload);
       socket.on('egg-owner', this.onEggOwner);
+      // The live board's numbers: the server's tally once a second and on every steal.
+      this.onMatchScores = (payload: any) => this.applyMatchScores(payload);
+      socket.on('match-scores', this.onMatchScores);
       // The server's verdict at the buzzer.
       this.onMatchResult = (payload: any) => {
         if (!payload) return;
@@ -2230,6 +2239,7 @@ export class GameScene extends Phaser.Scene {
       this.events.once('shutdown', () => {
         if (this.onRemoteInput) socket.off('player-input', this.onRemoteInput);
         if (this.onEggOwner) socket.off('egg-owner', this.onEggOwner);
+        if (this.onMatchScores) socket.off('match-scores', this.onMatchScores);
         if (this.onMatchResult) socket.off('match-result', this.onMatchResult);
         if (this.onRoomRejoined) socket.off('room-rejoined', this.onRoomRejoined);
         if (this.onPowerUsed) socket.off('power-used', this.onPowerUsed);
@@ -2241,6 +2251,7 @@ export class GameScene extends Phaser.Scene {
         }
         this.onRemoteInput = undefined;
         this.onEggOwner = undefined;
+        this.onMatchScores = undefined;
         this.onMatchResult = undefined;
         this.onRoomRejoined = undefined;
         this.onPowerUsed = undefined;
@@ -3279,8 +3290,9 @@ export class GameScene extends Phaser.Scene {
         holder.hasEgg = false;
         target.hasEgg = true;
         target.eggHoldCount = (target.eggHoldCount || 0) + 1;
+        target.steals = (target.steals || 0) + 1; // solo; online the server counts steals
         store.updatePlayer(holder.id, { hasEgg: false, x: holder.x, y: holder.y });
-        store.updatePlayer(target.id, { hasEgg: true, x: target.x, y: target.y, eggHoldCount: target.eggHoldCount });
+        store.updatePlayer(target.id, { hasEgg: true, x: target.x, y: target.y, eggHoldCount: target.eggHoldCount, steals: target.steals });
         store.setEgg(target.id, null);
         store.setLastEggHolderId(target.id);
         this.lastTagTime = now;
@@ -3752,7 +3764,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private endGame(result?: { winnerUserId: string | null; stats?: Array<{ userId: string; grabs: number; heldMs: number }> }) {
+  private endGame(result?: { winnerUserId: string | null; stats?: Array<{ userId: string; grabs: number; heldMs: number; steals?: number }> }) {
     if (this.gameOver) return;
     this.gameOver = true;
     this.matchEnded = true;
@@ -3766,7 +3778,7 @@ export class GameScene extends Phaser.Scene {
       // Online: the server's tally and verdict, so every screen agrees.
       for (const st of result.stats ?? []) {
         const p = this.playerByUserId(st.userId);
-        if (p) { p.eggHoldCount = st.grabs; p.eggHeldMs = st.heldMs; }
+        if (p) { p.eggHoldCount = st.grabs; p.eggHeldMs = st.heldMs; p.steals = st.steals ?? p.steals; }
       }
       winner = result.winnerUserId ? this.playerByUserId(result.winnerUserId) ?? null : null;
     } else {
@@ -3786,6 +3798,44 @@ export class GameScene extends Phaser.Scene {
       ? `🥚 You held the egg at the end! (${grabs} ${grabs === 1 ? 'grab' : 'grabs'})`
       : `🥚 ${winner.character.name} held the egg at the end! (${grabs} ${grabs === 1 ? 'grab' : 'grabs'})`;
     store.setGameResult(winner, msg);
+  }
+
+  /** The server's running tally (online): time held, steals and grabs for everyone. */
+  private applyMatchScores(payload: any) {
+    if (this.gameOver || !Array.isArray(payload?.stats)) return;
+    for (const st of payload.stats) {
+      const p = typeof st?.userId === 'string' ? this.playerByUserId(st.userId) : undefined;
+      if (!p) continue;
+      // The holder's time keeps ticking locally between tallies (see update()).
+      p.eggHeldMs = Number(st.heldMs) || 0;
+      p.steals = Number(st.steals) || 0;
+      p.eggHoldCount = Number(st.grabs) || 0;
+    }
+  }
+
+  /** Publish the live leaderboard to the HUD a few times a second, only when it changes. */
+  private updateScoreboard(now: number) {
+    if (now - this.lastScoreboardAt < 250) return;
+    this.lastScoreboardAt = now;
+    const roster: any[] = useGameStore.getState().roomPlayers || [];
+    const rows: ScoreRow[] = this.gsPlayers.map((p) => {
+      const heldMs = p.eggHeldMs ?? 0;
+      const steals = p.steals ?? 0;
+      const named = p.isBot ? undefined : roster.find((r) => r.user_id === p.userId)?.player_name;
+      return {
+        id: p.id,
+        name: p.id === 'player' ? 'You' : named || p.character.name,
+        points: matchPoints(heldMs, steals, false),
+        heldS: Math.floor(heldMs / 1000),
+        steals,
+        hasEgg: !!p.hasEgg,
+        isSelf: p.id === 'player',
+      };
+    });
+    const key = JSON.stringify(rows);
+    if (key === this.lastScoreboardKey) return;
+    this.lastScoreboardKey = key;
+    useGameStore.getState().setScoreboard(rows);
   }
 
   private playerByUserId(userId: string): Player | undefined {

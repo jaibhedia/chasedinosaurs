@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Menu, Egg } from 'lucide-react';
 import { useGameStore } from '@/store/gameStore';
 import { Minimap } from '@/components/Minimap';
+import { LiveScoreboard } from '@/components/LiveScoreboard';
 import { useIsTouchDevice } from '@/hooks/useIsTouchDevice';
 import { useGamepadConnected } from '@/hooks/useGamepadConnected';
 
@@ -129,6 +130,17 @@ export default function GameHUD() {
           </div>
         </div>
       )}
+
+      {/* Live points: under the menu button on desktop; compact under the egg chip on touch,
+          where the compact minimap has the top-right corner. */}
+      <div
+        className="pointer-events-none fixed z-[55]"
+        style={isMobile
+          ? { top: 'calc(env(safe-area-inset-top, 0px) + 2.9rem)', left: 'calc(env(safe-area-inset-left, 0px) + 0.75rem)' }
+          : { top: '4.75rem', right: 'calc(env(safe-area-inset-right, 0px) + 0.75rem)' }}
+      >
+        <LiveScoreboard compact={isMobile} />
+      </div>
 
       {/* Minimap: full size bottom-right on desktop; compact top-right on touch so it
           clears the joystick (bottom-right) and the power-up (bottom-left). The touch
