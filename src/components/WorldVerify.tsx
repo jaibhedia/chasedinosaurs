@@ -34,7 +34,10 @@ export function WorldVerify({ userId, onVerified }: { userId: string; onVerified
     try {
       const [mod, config, rp] = await Promise.all([import('@worldcoin/idkit'), fetchWorldConfig(), fetchRpContext()]);
       if (!config) throw new Error('World ID is off');
-      setKit({ Widget: mod.IDKitRequestWidget, preset: mod.selfieCheck(), config, rp });
+      // Staging only verifies through World's simulator, which can't issue Selfie Check (still
+      // in preview), so there we ask for Proof of Human, which the server also accepts.
+      const preset = config.environment === 'staging' ? mod.proofOfHuman() : mod.selfieCheck();
+      setKit({ Widget: mod.IDKitRequestWidget, preset, config, rp });
       setOpen(true);
     } catch {
       setNote("Couldn't start World ID. Check your connection and try again.");
