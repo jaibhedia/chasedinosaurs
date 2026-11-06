@@ -33,6 +33,7 @@ import { recentReceipts } from './ai/receipts';
 import { Match } from './match';
 import { BOARDS, flushLeaderboard, isVerified, leaderboard, leaderboardStore, loadLeaderboard, markVerified, recordMatch } from './leaderboard';
 import { rpContext, verifyProof, worldConfig, worldEnabled, WorldError } from './world';
+import { cleanName, uniqueName } from './names';
 
 const PORT = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 /** How long a disconnected player's slot is held open for them to come back. */
@@ -417,7 +418,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     const roomCode = genRoomCode();
     const player: LobbyPlayer = {
       id: `p-${socket.id.slice(0, 8)}`,
-      player_name: cleanStr(data.playerName, 24) || 'Host',
+      player_name: cleanName(data.playerName) || 'Host',
       user_id: data.userId,
       is_ready: false,
       character_id: cleanNum(data.characterId, 1, 4) || 1,
@@ -465,7 +466,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       // never fails on a clash; the lobby picker lets them swap afterwards.
       room.players.push({
         id: `p-${socket.id.slice(0, 8)}`,
-        player_name: cleanStr(data.playerName, 24) || 'Player',
+        player_name: uniqueName(cleanName(data.playerName) || 'Player', room.players.map((p) => p.player_name)),
         user_id: data.userId,
         is_ready: false,
         character_id: resolveCharacter(room, data.characterId),
@@ -511,7 +512,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     }
     const player: LobbyPlayer = {
       id: `p-${socket.id.slice(0, 8)}`,
-      player_name: cleanStr(data.playerName, 24) || 'Player',
+      player_name: cleanName(data.playerName) || 'Player',
       user_id: data.userId,
       is_ready: true, // nothing to ready up for; the timer starts it
       character_id: cleanNum(data.characterId, 1, 4) || 1,
@@ -522,6 +523,7 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
     if (rc) {
       room = rooms.get(rc)!;
       player.character_id = resolveCharacter(room, player.character_id);
+      player.player_name = uniqueName(player.player_name, room.players.map((p) => p.player_name));
       room.players.push(player);
     } else {
       if (rooms.size >= MAX_ROOMS) {
@@ -640,7 +642,9 @@ io.on('connection', (socket: Socket<any, any, any, SocketData>) => {
       return;
     }
     p.character_id = Number(characterId);
-    if (playerName) p.player_name = playerName; // name mirrors the character
+    // The player's chosen name (older clients still send their dino's).
+    const name = cleanName(playerName);
+    if (name) p.player_name = uniqueName(name, room.players.filter((x) => x !== p).map((x) => x.player_name));
     socket.data.roomCode = rc;
     socket.data.userId = uid;
     socket.join(rc);
