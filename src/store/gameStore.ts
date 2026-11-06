@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { cleanName, defaultName } from '@/lib/playerName';
 
 export type GameMode = 'single-player' | 'multiplayer';
 /** Solo bot strength. Multiplayer fill-bots always play on 'normal'. */
@@ -120,6 +121,7 @@ export interface GameObject {
 const USER_ID_STORAGE_KEY = 'chaseUserId';
 const DIFFICULTY_STORAGE_KEY = 'chase-difficulty';
 const STICK_SIDE_STORAGE_KEY = 'chase-stick-side';
+const PLAYER_NAME_STORAGE_KEY = 'chase-player-name';
 
 function readDifficulty(): Difficulty {
   try {
@@ -136,6 +138,18 @@ function readStickSide(): StickSide {
   return 'right';
 }
 
+/** The saved name, or a "Dino 1234" made up (and kept) the first time. */
+function readPlayerName(): string {
+  try {
+    const saved = cleanName(localStorage.getItem(PLAYER_NAME_STORAGE_KEY) ?? '');
+    if (saved) return saved;
+    const made = defaultName();
+    localStorage.setItem(PLAYER_NAME_STORAGE_KEY, made);
+    return made;
+  } catch { /* storage blocked */ }
+  return defaultName();
+}
+
 function generateGuestId(): string {
   const rand = Math.random().toString(36).slice(2, 11);
   return `guest_${rand}`;
@@ -148,6 +162,8 @@ interface GameState {
   selectedMap: GameMap | null;
   difficulty: Difficulty;
   stickSide: StickSide;
+  /** What other players, the boards and the results call you (src/lib/playerName.ts). */
+  playerName: string;
   gamePhase: GamePhase;
   players: Player[];
   gameObjects: GameObject[];
@@ -182,6 +198,8 @@ interface GameState {
   setMap: (map: GameMap) => void;
   setDifficulty: (difficulty: Difficulty) => void;
   setStickSide: (side: StickSide) => void;
+  /** Saves a name that passes the rules and returns it cleaned; '' (and no change) if it doesn't. */
+  setPlayerName: (name: string) => string;
   setGamePhase: (phase: GamePhase) => void;
   setPlayers: (players: Player[]) => void;
   updatePlayer: (id: string, updates: Partial<Player>) => void;
@@ -255,6 +273,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   ...initialState,
   difficulty: readDifficulty(),
   stickSide: readStickSide(),
+  playerName: readPlayerName(),
 
   setUserId: (id) => set({ userId: id }),
   initUserId: () => {
@@ -279,6 +298,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   setStickSide: (side) => {
     try { localStorage.setItem(STICK_SIDE_STORAGE_KEY, side); } catch { /* storage blocked */ }
     set({ stickSide: side });
+  },
+  setPlayerName: (raw) => {
+    const name = cleanName(raw);
+    if (!name) return '';
+    try { localStorage.setItem(PLAYER_NAME_STORAGE_KEY, name); } catch { /* storage blocked */ }
+    set({ playerName: name });
+    return name;
   },
   setGamePhase: (phase) => set({ gamePhase: phase }),
   setPlayers: (players) => set({ players }),

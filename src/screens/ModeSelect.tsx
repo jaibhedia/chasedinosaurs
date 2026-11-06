@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Check, User, Users, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HowToPlay } from '@/components/HowToPlay';
+import NameField from '@/components/NameField';
 import { useGameStore } from '@/store/gameStore';
 import { usePageTitle } from '@/hooks/usePageTitle';
 
@@ -83,6 +84,8 @@ export default function ModeSelect() {
               <h1 className="pixel-font text-sm md:text-2xl title-pixel">Choose your mode</h1>
             </div>
           </motion.div>
+
+          <NameField className="mx-auto w-full max-w-md" />
 
           <div className="grid grid-cols-3 gap-2 md:gap-6">
             <ModeCard

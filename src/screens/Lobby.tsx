@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Bot, Check, Copy, Globe, Link2, Lock, Play, Shar
 import { Button } from '@/components/ui/button';
 import { ComingSoon } from '@/components/ComingSoon';
 import { DinoSprite } from '@/components/DinoSprite';
+import NameField from '@/components/NameField';
 import { useGameStore } from '@/store/gameStore';
 import { useSocket, type LobbyPlayer } from '@/providers/SocketProvider';
 import { characters } from '@/data/characters';
@@ -34,7 +35,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
 
   const {
     selectedCharacter, setCharacter, setGameMode, setQuickPlay,
-    setRoomCode: setStoreRoomCode, userId: storeUserId, initUserId, roomCode: storeRoomCode,
+    setRoomCode: setStoreRoomCode, userId: storeUserId, initUserId, roomCode: storeRoomCode, playerName,
   } = useGameStore();
   const { socket, ensureConnected, createRoom, joinRoom, quickPlay, setPlayerReady, chooseCharacter, startGame, leaveRoom } = useSocket();
 
@@ -154,7 +155,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
       return;
     }
     try {
-      const res = await quickPlay({ userId, characterId: charNum(character), playerName: character.name });
+      const res = await quickPlay({ userId, characterId: charNum(character), playerName });
       enterRoom(res.roomCode, res.players, res);
     } catch (err) {
       setError((err as Error).message || 'Could not find a match.');
@@ -207,7 +208,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
         userId,
         mapId: gameMaps[0].id,
         characterId: charNum(character),
-        playerName: character.name,
+        playerName,
         isPublic,
       });
       enterRoom(res.roomCode, res.players);
@@ -231,7 +232,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
       return;
     }
     try {
-      const res = await joinRoom({ roomCode: code, userId, characterId: charNum(character), playerName: character.name });
+      const res = await joinRoom({ roomCode: code, userId, characterId: charNum(character), playerName });
       enterRoom(res.roomCode ?? code, res.players, res);
     } catch (err) {
       const msg = (err as Error).message;
@@ -299,7 +300,11 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
     if (cn === myCharNum || takenByOthers.has(cn)) return;
     setCharNotice('');
     setCharacter(c);
-    chooseCharacter(cn, c.name, roomCode, userId);
+    chooseCharacter(cn, playerName, roomCode, userId);
+  };
+  // A new name reaches the room the same way a new dino does, until the match starts.
+  const rename = (name: string) => {
+    if (myCharNum != null) chooseCharacter(myCharNum, name, roomCode, userId);
   };
 
   const shell = 'h-[100dvh] w-full px-solid-bg flex flex-col overflow-y-auto p-3 md:p-4';
@@ -490,7 +495,8 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
                   <div key={p.user_id} className="flex items-center justify-between p-1.5 md:p-2.5 bg-[#4d2813] pixel-border">
                     <div className="flex items-center gap-2">
                       <span className={`w-3 h-3 border-2 border-[#261309] ${p.is_ready ? 'bg-[#6ab04c]' : 'bg-[#ffc93c]'}`} />
-                      <span className="text-[#f4e7c3] font-semibold">{ch?.name ?? p.player_name}</span>
+                      <span className="text-[#f4e7c3] font-semibold truncate">{p.player_name || ch?.name}</span>
+                      {ch && <span className="text-[#f4e7c3]/60 text-sm">{ch.name}</span>}
                       {p.user_id === userId && <span className="text-[#ffc93c] text-sm">(you)</span>}
                       {!p.connected && <span className="text-[#e8503a] text-sm">reconnecting…</span>}
                     </div>
@@ -512,6 +518,7 @@ export default function Lobby({ quick = false }: { quick?: boolean }) {
         {/* Right: character + actions */}
         <div className="space-y-3 md:space-y-4">
           <div className="p-3 md:p-5 pixel-panel">
+            <NameField onCommit={rename} className="mb-2 md:mb-3" />
             <h3 className="pixel-font text-sm md:text-lg text-[#f4e7c3] mb-2 md:mb-3">Your dino</h3>
             <div className="grid grid-cols-4 gap-1.5 md:gap-3">
               {characters.map((c) => {
