@@ -29,6 +29,7 @@ import { Server, type Socket } from 'socket.io';
 import { botLine, matchRoast } from './botVoice';
 import { aiEnabled, getAiClient, AI_MODEL, aiProviderName } from './ai/provider';
 import { Match } from './match';
+import { BOARDS, leaderboard, loadLeaderboard, recordMatch } from './leaderboard';
 
 const PORT = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 /** How long a disconnected player's slot is held open for them to come back. */
@@ -180,6 +181,8 @@ function finishMatch(rc: string): void {
   const room = rooms.get(rc);
   if (!room?.match || room.match.ended) return;
   const result = room.match.finish();
+  // The humans still in the room go on the all-time board; bots never do.
+  recordMatch(result, room.players.map((p) => ({ userId: p.user_id, name: p.player_name })));
   room.match = null;
   room.endTimer = null;
   if (room.scoreTimer) clearInterval(room.scoreTimer);
@@ -295,6 +298,18 @@ app.get('/health', (_req, res) => {
     ai: { enabled: aiEnabled, provider: aiProviderName, model: AI_MODEL || null },
   });
 });
+
+/**
+ * The all-time leaderboard: best single match per player (hold, steals) and total wins.
+ * `me` (the caller's own user id) only marks their row; other players' ids are never sent.
+ */
+app.get('/leaderboard', (req, res) => {
+  const board = BOARDS.find((b) => b === req.query.board) ?? 'hold';
+  const me = typeof req.query.me === 'string' ? req.query.me.slice(0, 64) : '';
+  res.json(leaderboard(board, me));
+});
+
+loadLeaderboard();
 
 const httpServer = createServer(app);
 

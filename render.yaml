@@ -45,3 +45,9 @@ services:
         sync: false
       - key: AI_MODEL
         sync: false
+
+      # --- All-time leaderboard ------------------------------------------------
+      # Folder for leaderboard.json (default: ./data). The free plan's disk is wiped on
+      # every restart and deploy; attach a persistent disk and set this to its mount path.
+      - key: DATA_DIR
+        sync: false
