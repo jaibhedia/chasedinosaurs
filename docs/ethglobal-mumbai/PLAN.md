@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 8h 56m to freeze, 12h 56m to the deadline (2026-11-06 20:03 IST)
+> ⏱ Time left at last update: 8h 30m to freeze, 12h 30m to the deadline (2026-11-06 20:30 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: 4e3ef74 -->
+<!-- last-logged: beb935f -->
 
 ## Eligibility gates
 
@@ -263,6 +263,18 @@ One entry per push, oldest first, written by the post-push routine.
     permission check.
 - **Next / known issues:** set the two variables on Render. The free server still sleeps after
   15 idle minutes (PRD §8).
+
+### F6 fix · Controls panel layout · Shipped · 2026-11-06 20:30 IST
+- **Commits:** `beb935f` (1) · PR #6
+- **Files:** `src/components/ControlsPanel.tsx`, `src/components/GameMenu.tsx`
+- **What changed:** tab labels fit on one line (Keyboard, Controller, Phone, with "Keyboard &
+  mouse" kept as the accessible name). Rows are flat strips instead of framed boxes, labelled in
+  the heading font. Inside the menu the panel has no frame of its own, and the menu widens to
+  520 px.
+- **AI:** Claude Code (Opus 5.5). **Human:** Shantanu found the layout faults on a 1440 px screen
+  and sent a screenshot (P5).
+- **Verified:** no tab label overflows at 1440 px, on `/settings` or on a 568 px phone. The
+  25-check browser suite and the small-phone touch test pass. `npm run build` ✅.
 
 ## Submission checklist
 

@@ -55,7 +55,7 @@ AI role:
 | `README.md` | Setup | generated | The Mumbai section, written to P0's disclosure requirement |
 | `src/store/gameStore.ts` | F5, F2, F1 | generated | Asked for the features (P1) |
 | `src/components/MobileControls.tsx` | F5, F6 | generated | Asked for the features (P1, P2) |
-| `src/components/GameMenu.tsx` | F5, F1, F6 | generated | Asked for the features (P1, P2) |
+| `src/components/GameMenu.tsx` | F5, F1, F6 | generated | Asked for the features (P1, P2); layout fix from a screenshot (P5) |
 | `src/lib/gamepadInput.ts` | F4, F6 | generated | Asked for the features (P1, P2) |
 | `src/hooks/useGamepadConnected.ts` | F4 | generated | Asked for the feature (P1) |
 | `src/components/Game.tsx` | F4, F1 | generated | Asked for the features (P1) |
@@ -81,7 +81,7 @@ AI role:
 | `src/components/LiveScoreboard.tsx` | F2 | generated | Live per-match board asked for by Karmanya (P1) |
 | `src/scene/gameScene.ts` | F2, F1 | generated | Asked to build on the existing system rather than overhaul it (P1) |
 | `src/screens/Results.tsx` | F2 | generated | Asked for the feature (P1) |
-| `src/components/ControlsPanel.tsx` | F6 | generated | Controls for keyboard/mouse, controller and phone, asked for by Karmanya (P2) |
+| `src/components/ControlsPanel.tsx` | F6 | generated | Controls for keyboard/mouse, controller and phone, asked for by Karmanya (P2); layout fix from a screenshot (P5) |
 | `src/screens/Settings.tsx` | F6 | generated | A Settings option, asked for by Karmanya (P2) |
 
 ## Pre-existing work (before the baseline)
@@ -160,3 +160,9 @@ messages are the same as in P1 and are elided here.
 ### P4 · 2026-11-06, about 19:58 IST · storage other than DATA_DIR
 
 > give me alternate for the data_dir!
+
+### P5 · 2026-11-06, about 20:27 IST · the Controls panel layout
+
+> [screenshot: the in-game Controls panel on localhost at 1440 px wide, with the "Keyboard &
+> mouse" tab label wrapped onto two lines and the rows drawn as framed boxes]
+> fix the damn layout
