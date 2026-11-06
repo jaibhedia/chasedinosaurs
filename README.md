@@ -13,6 +13,23 @@ Play: **https://chasedinosaurs.fun** · Roadmap: [`ROADMAP.md`](ROADMAP.md)
 
 A product of **[Abstract Studio](https://abstractstudio.in)**. Proprietary, see [License](#license).
 
+## ETHGlobal Mumbai 2026
+
+Entered in a Continuity track (Ship a Feature). Everything up to tag
+`pre-ethglobal-mumbai-2026` (`1dcafa3`, 2026-10-07) existed before the event. Only the work
+after it is new.
+
+- Built at the event: see the Shipped rows in the PRD.
+- Docs:
+  - [PRD](docs/ethglobal-mumbai/PRD.md): what we're building, and what came before
+  - [Plan and build log](docs/ethglobal-mumbai/PLAN.md): one entry per push
+  - [AI usage](docs/ethglobal-mumbai/AI_USAGE.md): attribution by file, and every prompt
+
+```bash
+git log --oneline pre-ethglobal-mumbai-2026..main   # what was built at the event
+git diff --stat pre-ethglobal-mumbai-2026..main
+```
+
 ---
 
 ## Layout
