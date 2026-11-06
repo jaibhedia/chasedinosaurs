@@ -39,8 +39,11 @@ const host = (() => {
   }
 })();
 
-/** Served by the 0G Compute Router (router-api.0g.ai), whose responses carry receipts. */
-const aiOnZeroG = host.includes('0g.ai') || host.includes('integratenetwork');
+/**
+ * Served by 0G Compute: the Router (router-api.0g.ai) or a provider reached directly
+ * (*.integratenetwork.work). Both give a request id for every response.
+ */
+export const aiOnZeroG = host.includes('0g.ai') || host.includes('integratenetwork');
 
 /**
  * Human-readable provider name, shown in /health and the in-game AI pill.
