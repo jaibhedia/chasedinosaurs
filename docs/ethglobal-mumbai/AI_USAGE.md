@@ -144,3 +144,14 @@ messages are the same as in P1 and are elided here.
 > [11/6, 4:00 PM] Karmanya (KARMA) CSD: Settings option to check controls for keyboard/mouse & Controller
 > And also phone
 > [end paste]
+
+### P3 · 2026-11-06, about 19:45 IST · partner picks, the open decisions, Render
+
+> also why arkiv and wold id and not arc and any else you sure convince me for this i gave you
+> the full msg do it
+>
+> [pasted: the "Decisions for you" list from Claude's earlier summary: the cut-off "also
+> increase the…", total wins on the Wins tab, and confirming the Continuity track]
+>
+> and what is "ender's free plan wipes the all-time leaderboard on every restart or deploy.
+> Attach a disk and set DATA_DIR, or accept the resets."

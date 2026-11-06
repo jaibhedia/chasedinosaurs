@@ -42,8 +42,9 @@ view, because the spectator shows the live board.
 - [ ] Merge PR #6 with a **merge commit**. Vercel deploys the web app and Render the server.
 - [ ] Render env: `ADMIN_EMAILS` (comma-separated) and `ADMIN_PASSCODE`. Without the emails
   nobody can spectate.
-- [ ] Optional: a persistent disk with `DATA_DIR` set to its mount path, so the all-time board
-  survives restarts and deploys
+- [ ] Optional: the Starter plan ($7/month) plus a 1 GB persistent disk, with `DATA_DIR` set to
+  its mount path, so the all-time board survives deploys, restarts and idle sleeps. Free services
+  can't have a disk and wipe their files when they sleep after 15 idle minutes.
 - [ ] On the live site, check that:
   - points tick, and a steal adds 5
   - `/leaderboard` updates after an online match

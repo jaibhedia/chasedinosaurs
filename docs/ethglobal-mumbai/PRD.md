@@ -1,6 +1,6 @@
 # Chase Dinosaurs · ETHGlobal Mumbai 2026 · PRD
 
-> A living document, updated after every feature push. Last update: 2026-11-06 19:35 IST at `3b3d2ea`.
+> A living document, updated after every feature push. Last update: 2026-11-06 19:55 IST at `8e41853`.
 > Plan and build log: [PLAN.md](PLAN.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md)
 
 ## 1. Summary
@@ -57,14 +57,21 @@ Status: Planned → Building → Shipped, or Cut (with the reason in §9).
 
 ## 5. Partner prizes
 
-Not chosen yet. The candidates from the [prizes page](https://ethglobal.com/events/mumbai/prizes)
-that fit this game and accept Continuity projects are below. Pick at most 3.
+Not chosen yet; pick at most 3. Checked against the
+[prizes page](https://ethglobal.com/events/mumbai/prizes) on 2026-11-06 at 19:50 IST (P3) and ranked
+by fit, hard requirements and the time left. Feedback for each partner goes in the build log's
+Partner notes while integrating.
 
-| Partner | Track(s) | How we'd use it | Feedback for them (draft) | Status |
-|---|---|---|---|---|
-| 0G | Keep Building on 0G ($3k) | Bot banter and the post-match roast run on 0G Compute (OpenAI-compatible), and the request ids are logged. The game started as 0G agent brains (2026-06-20). | — | Proposed |
-| Arkiv | Continuity prize ($3k / $1k) | The all-time leaderboard (F3) as Arkiv entities: queryable bests, with an expiry per season | — | Proposed. Needs an open-source licence on the repo. |
-| World | [Cont] Best Use of IDKit ($2.5k) | Only World ID–verified humans get on the all-time board (Selfie Check) | — | Proposed |
+| # | Partner | Track | How we'd use it | The requirement that decides it | Status |
+|---|---|---|---|---|---|
+| 1 | World | [Cont] Best Use of IDKit ($2.5k: up to 2 teams × $1,250) | One human, one row on the all-time board. Today a second browser profile is a second player, so two tabs in a private room can farm wins. Verified players rank; everyone else still plays. Selfie Check is the proportionate credential for a free board; Proof of Human only if cash is attached. | IDKit with server-side verification, a success and an alternative path in the demo, and a short debrief. No licence requirement. | Proposed |
+| 2 | 0G | Keep Building on 0G ($3k) | The bots' banter already calls any OpenAI-compatible endpoint; point it at 0G Compute and log the request ids. The game started on 0G agent brains (2026-06-20). | A 0G Compute request id, Storage root hash or Chain contract from this hackathon, a dated changelog from a prior state, and a video under 3 min. Paid at 0G's discretion. | Proposed |
+| 3 | Arc | Arc Studio Continuity Track: Bring Your Project to Arc ($3k) | An organiser-funded USDC prize for the top verified human, paid on Arc from the admin screen. Players never pay in, which keeps it clear of real-money gaming. The ETHOnline build had an Arc USDC escrow (removed 2026-09-24). | Built in Arc Studio: a shareable Studio project, shown in the demo (Studio can start from a GitHub repo). A working frontend and backend, and an architecture diagram. | Proposed |
+| — | Arkiv | Build on Arkiv, existing projects ($3k / $1k, plus $500 with Swarm) | The all-time board as Arkiv entities, which would also stop the Render resets (§8) | "A public repo with an open-source license." The repo is proprietary by the 2026-09-24 decision (ROADMAP §12). | Not picked unless that changes |
+
+Ruled out: Hedera (for projects already on Hedera), Whitechain (a USDT payment flow), Uniswap and ENS
+(open source, and no swap or naming use), Chainlink (CCIP state changes), 1inch (Aqua/SwapVM
+swaps), Ethereum Foundation (Anon-RPC reads; the game makes none) and Definitive (DeFi).
 
 ## 6. Judging-criteria map
 
@@ -87,10 +94,15 @@ that fit this game and accept Continuity projects are below. Pick at most 3.
 
 - ~~The prompt says "also increase the …" and is cut off.~~ Answered by pasting Karmanya's full
   message (P2), which adds one request: the controls in Settings, now F6.
-- The Wins tab counts total wins. A single match can only give 0 or 1, so "best single match"
-  can't apply there. · Karmanya · confirm
-- The leaderboard file lives on the server's disk. Render's free plan wipes it on a restart or
-  redeploy. Attach a disk (paid) or move it to Arkiv or a database. · Shantanu · before the event
+- ~~The Wins tab counts total wins.~~ Decided (P3): total online wins, with ties broken by the best
+  single-match points, so the per-match rule still settles ties. A single match gives 0 or 1, so a
+  best-match wins board would put every winner at 1. Karmanya can still overrule it; it's a
+  one-line change.
+- The leaderboard file lives on the server's own disk. On Render's free plan that disk is wiped
+  on every deploy and restart, and whenever the service sleeps after 15 minutes without traffic.
+  Free services can't have a persistent disk. Fix: the Starter plan ($7/month) plus a 1 GB disk
+  ($0.25/month) with `DATA_DIR` set to its mount path, which also ends the ~1-minute wake-up.
+  Or move the board to a database. · Shantanu · before the event
 - Email-only admin isn't proof of identity, so a passcode is also required. · Shantanu · set
   `ADMIN_PASSCODE`
 
@@ -98,3 +110,5 @@ that fit this game and accept Continuity projects are below. Pick at most 3.
 
 - 2026-11-06 16:14 IST · PRD created from the feature list (P1).
 - 2026-11-06 18:10 IST · F6 (controls in Settings) added from Karmanya's full message (P2).
+- 2026-11-06 19:55 IST · Partner picks re-ranked against the prize rules: Arc in, Arkiv out on its
+  open-source requirement. Wins decided (P3).
