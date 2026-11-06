@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 12h 30m to freeze, 16h 30m to the deadline (2026-11-06 16:30 IST)
+> ⏱ Time left at last update: 12h 43m to freeze, 16h 43m to the deadline (2026-11-06 16:17 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: a9cc64c -->
+<!-- last-logged: ec97817 -->
 
 ## Eligibility gates
 
@@ -30,8 +30,8 @@ view, because the spectator shows the live board.
 
 | # | PRD | Step | Estimate | Status |
 |---|---|---|---|---|
-| 1 | F5 | Stick-side preference in the store; MobileControls flips; toggle in the menu | 15 min | Planned |
-| 2 | F4 | Gamepad polling into the shared touch-input channel; Start/B for the menu | 25 min | Planned |
+| 1 | F5 | Stick-side preference in the store; MobileControls flips; toggle in the menu | 15 min | Shipped |
+| 2 | F4 | Gamepad polling into the shared touch-input channel; Start/B for the menu | 25 min | Shipped |
 | 3 | F2 | Server: steals and points in `Match`, a 1 s `match-scores` broadcast. Client: a live board in the HUD and points on the results screen | 45 min | Planned |
 | 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Planned |
 | 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Planned |
@@ -50,8 +50,8 @@ view, because the spectator shows the live board.
 
 One entry per push, oldest first, written by the post-push routine.
 
-### F0 · Setup · Shipped · 2026-11-06 16:30 IST
-- **Commits:** `1dcafa3..a9cc64c` (1), plus this docs commit
+### F0 · Setup · Shipped · 2026-11-06 16:14 IST
+- **Commits:** `1dcafa3..ad4fb5b` (2): the skill, then the docs · PR #6
 - **Files:** `.claude/skills/ethglobal-mumbai/` (new), `docs/ethglobal-mumbai/` (new), `README.md`
 - **New vs reused:** New: the rules skill, the PRD, the plan, the AI log, and the baseline tag
   `pre-ethglobal-mumbai-2026`. The layout follows `docs/ethonline/`.
@@ -59,6 +59,35 @@ One entry per push, oldest first, written by the post-push routine.
   **Human:** supplied the ETHGlobal rules and asked for this workflow (P0). Gave the feature list,
   with Karmanya's scoring rules (P1).
 - **Verified:** `push-report.sh` runs on macOS bash 3.2 · CI on `1dcafa3` ✅
+
+### F5 · Stick on either side · Shipped · 2026-11-06 16:16 IST
+- **Commits:** `4631219` (1) · PR #6
+- **Files:** `src/store/gameStore.ts`, `src/components/MobileControls.tsx`, `src/components/GameMenu.tsx` · +43/−5
+- **New vs reused:**
+  - New: a `stickSide` preference (stored as `chase-stick-side`) and a "Stick: left/right"
+    toggle in the in-game menu (touch devices only). MobileControls places the stick and the
+    power button from it.
+  - Reused: the existing controls and menu, and the store's localStorage pattern from
+    difficulty.
+- **AI:** Claude Code (Opus 5.5) wrote all three changes. **Human:** asked for the feature (P1).
+- **Verified:** `npm run build` ✅. Not yet tried on a phone.
+
+### F4 · Xbox controller on PC · Shipped · 2026-11-06 16:16 IST
+- **Commits:** `ec97817` (1) · PR #6
+- **Files:** `src/lib/gamepadInput.ts` (new), `src/hooks/useGamepadConnected.ts` (new),
+  `src/components/Game.tsx`, `src/components/GameHUD.tsx`, `src/lib/haptics.ts` · +119/−1
+- **New vs reused:**
+  - New: per-frame gamepad polling, controller rumble on the moments phones vibrate, and a
+    HUD hint when a pad is connected.
+  - Reused: the scene's `touchInput` channel (analog throttle, hold-to-fire), so the 3.8k-line
+    scene didn't change.
+- **AI:** Claude Code (Opus 5.5) wrote all of it. **Human:** asked for the feature (P1).
+- **Challenge:** the pad and the touch stick share one input channel. An idle pad writes
+  nothing, so it can't zero out a touch stick, and it sends one zero when released, so the dino
+  doesn't drift.
+- **Verified:** `npm run build` ✅. Not yet tested with a physical pad. Browsers only expose a
+  pad after its first button press.
+- **Next / known issues:** screens outside a match (home, results) don't respond to the pad yet.
 
 ## Submission checklist
 

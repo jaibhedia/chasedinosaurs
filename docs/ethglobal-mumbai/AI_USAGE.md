@@ -52,6 +52,14 @@ AI role:
 | `.claude/skills/ethglobal-mumbai/` | Setup | generated | Specified the workflow and supplied the rules (P0) |
 | `docs/ethglobal-mumbai/` | Setup | generated | Directed the content (P0, P1) |
 | `README.md` | Setup | generated | The Mumbai section, written to P0's disclosure requirement |
+| `src/store/gameStore.ts` | F5 | generated | Asked for the feature (P1) |
+| `src/components/MobileControls.tsx` | F5 | generated | Asked for the feature (P1) |
+| `src/components/GameMenu.tsx` | F5 | generated | Asked for the feature (P1) |
+| `src/lib/gamepadInput.ts` | F4 | generated | Asked for the feature (P1) |
+| `src/hooks/useGamepadConnected.ts` | F4 | generated | Asked for the feature (P1) |
+| `src/components/Game.tsx` | F4 | generated | Asked for the feature (P1) |
+| `src/components/GameHUD.tsx` | F4 | generated | Asked for the feature (P1) |
+| `src/lib/haptics.ts` | F4 | generated | Asked for the feature (P1) |
 
 ## Pre-existing work (before the baseline)
 
