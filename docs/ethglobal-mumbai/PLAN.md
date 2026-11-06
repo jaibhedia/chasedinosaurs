@@ -4,12 +4,12 @@
 > 🧊 **Feature freeze: Sat 7 Nov, 05:00 IST.** After that, only the demo video, the form and the
 > partner write-ups.
 > 🎮 **Event build: target about 19:00 IST Fri 6 Nov** (2–3 h after P1).
-> ⏱ Time left at last update: 10h 40m to freeze, 14h 40m to the deadline (2026-11-06 18:20 IST)
+> ⏱ Time left at last update: 9h 26m to freeze, 13h 26m to the deadline (2026-11-06 19:33 IST)
 >
 > Spec: [PRD.md](PRD.md) · AI disclosure: [AI_USAGE.md](AI_USAGE.md) · Rules:
 > [rules.md](../../.claude/skills/ethglobal-mumbai/references/rules.md)
 
-<!-- last-logged: a360b12 -->
+<!-- last-logged: 3b3d2ea -->
 
 ## Eligibility gates
 
@@ -35,7 +35,7 @@ view, because the spectator shows the live board.
 | 3 | F2 | Server: steals and points in `Match`, a 1 s `match-scores` broadcast. Client: a live board in the HUD and points on the results screen | 45 min | Shipped |
 | 4 | F3 | Server: a bests store (file in `DATA_DIR`) and `GET /leaderboard`. Client: a `/leaderboard` screen with 3 tabs | 35 min | Shipped |
 | 5 | F1 | Server: admin sign-in, a live room list and spectate. Client: the `/admin` screen and spectator mode in the scene | 60 min | Shipped |
-| 6 | F6 | A shared `readPad()` for the game and the check; a Controls panel (3 tabs, live highlight, stick-side preview); `/settings` from home; Controls in the in-game menu | 40 min | Building |
+| 6 | F6 | A shared `readPad()` for the game and the check; a Controls panel (3 tabs, live highlight, stick-side preview); `/settings` from home; Controls in the in-game menu | 40 min | Shipped |
 
 ## Event go-live (today)
 
@@ -49,6 +49,8 @@ view, because the spectator shows the live board.
   - `/leaderboard` updates after an online match
   - `/admin` sign-in and Watch work
 - [ ] Try an Xbox pad on a PC, and the stick-side toggle on a phone
+- [ ] Settings → Controls: press a pad's buttons and see each row light up; flip the stick side
+  on a phone
 
 ## How we commit
 
@@ -199,6 +201,41 @@ One entry per push, oldest first, written by the post-push routine.
     user id.
   - Before this event, the server's `voice-join` already let anyone with a room code join
     that room's voice. Not fixed here.
+
+### F6 · Controls in Settings · Shipped · 2026-11-06 19:33 IST
+- **Commits:** `d62ea0d` (spec), `343f614`, `315ab00`, `3b3d2ea` · PR #6
+- **Files:** `src/components/ControlsPanel.tsx` (new), `src/screens/Settings.tsx` (new),
+  `src/lib/gamepadInput.ts`, `src/App.tsx`, `src/screens/Home.tsx`,
+  `src/components/GameMenu.tsx`, `src/components/MobileControls.tsx` · +476/−81 (most of the
+  menu's diff is re-indentation)
+- **New vs reused:**
+  - New: a `/settings` screen (Settings button on home) and a Controls panel with three tabs:
+    keyboard and mouse, controller, phone. It opens on the tab for the device in use, lights
+    up held keys and pad buttons, names the pad and shows its stick. Also a Controls item in
+    the in-game menu.
+  - Reused: F4's pad reading (now `readPad()`, shared by the game and the check), F5's
+    stick-side setting, and the leaderboard screen's layout and tabs.
+- **AI:** Claude Code (Opus 5.5) wrote it and the browser checks. **Human:** Karmanya asked for
+  a Settings option showing the controls for keyboard/mouse, controller and phone, and
+  Shantanu passed it on (P2).
+- **Challenge:** a check only helps if it reads the pad the way a match does. The pad logic
+  (D-pad over stick, deadzone, A/RB/RT) moved into one `readPad()` that the game and the panel
+  both call, so a row lights up only when a match would respond. Separately, on a 568 px wide
+  phone the wider panel reached into the stick's touch area, and the stick took taps meant
+  for Back. The stick now ignores touches that start on the menu.
+- **Verified:**
+  - `npm run build` ✅
+  - Headless Chromium against the production build, with a simulated Xbox pad: 25/25 checks,
+    three runs in a row. Home → Settings; each device's default tab; Space, arrows and W
+    light their rows; a pad connecting opens Controller and is named; A, RT, the stick, the
+    D-pad, Start and B light theirs, and the deadzone ignores drift; the stick side saves;
+    the in-game Controls and Back work; Start closes the menu; no sideways scroll on 740, 667
+    and 568 px wide phones.
+  - A touch test on a 568×320 phone failed before the stick fix and passes after it.
+  - Not yet tried with a physical pad or on a real phone.
+- **Next / known issues:**
+  - Bindings can't be changed (out of scope, PRD §7).
+  - The pad still can't move through menus outside a match.
 
 ## Submission checklist
 

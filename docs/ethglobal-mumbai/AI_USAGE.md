@@ -54,9 +54,9 @@ AI role:
 | `docs/ethglobal-mumbai/` | Setup | generated | Directed the content (P0, P1) |
 | `README.md` | Setup | generated | The Mumbai section, written to P0's disclosure requirement |
 | `src/store/gameStore.ts` | F5, F2, F1 | generated | Asked for the features (P1) |
-| `src/components/MobileControls.tsx` | F5 | generated | Asked for the feature (P1) |
-| `src/components/GameMenu.tsx` | F5, F1 | generated | Asked for the features (P1) |
-| `src/lib/gamepadInput.ts` | F4 | generated | Asked for the feature (P1) |
+| `src/components/MobileControls.tsx` | F5, F6 | generated | Asked for the features (P1, P2) |
+| `src/components/GameMenu.tsx` | F5, F1, F6 | generated | Asked for the features (P1, P2) |
+| `src/lib/gamepadInput.ts` | F4, F6 | generated | Asked for the features (P1, P2) |
 | `src/hooks/useGamepadConnected.ts` | F4 | generated | Asked for the feature (P1) |
 | `src/components/Game.tsx` | F4, F1 | generated | Asked for the features (P1) |
 | `src/components/GameHUD.tsx` | F4, F2, F1 | generated | Asked for the features (P1) |
@@ -67,8 +67,8 @@ AI role:
 | `server/src/leaderboard.ts` | F3 | generated | Board rules by Karmanya: best single match, not sums (P1) |
 | `server/src/leaderboard.test.ts` | F3 | generated | Board rules by Karmanya (P1) |
 | `src/screens/Leaderboard.tsx` | F3 | generated | Three boards asked for by Karmanya (P1) |
-| `src/App.tsx` | F3, F1 | generated | Asked for the features (P1) |
-| `src/screens/Home.tsx` | F3 | generated | Asked for the feature (P1) |
+| `src/App.tsx` | F3, F1, F6 | generated | Asked for the features (P1, P2) |
+| `src/screens/Home.tsx` | F3, F6 | generated | Asked for the features (P1, P2) |
 | `render.yaml` | F3, F1 | generated | Asked for the features (P1) |
 | `src/screens/Admin.tsx` | F1 | generated | Admin-only spectating, email identity for now (P1) |
 | `src/lib/adminSession.ts` | F1 | generated | Admin-only spectating, email identity for now (P1) |
@@ -80,6 +80,8 @@ AI role:
 | `src/components/LiveScoreboard.tsx` | F2 | generated | Live per-match board asked for by Karmanya (P1) |
 | `src/scene/gameScene.ts` | F2, F1 | generated | Asked to build on the existing system rather than overhaul it (P1) |
 | `src/screens/Results.tsx` | F2 | generated | Asked for the feature (P1) |
+| `src/components/ControlsPanel.tsx` | F6 | generated | Controls for keyboard/mouse, controller and phone, asked for by Karmanya (P2) |
+| `src/screens/Settings.tsx` | F6 | generated | A Settings option, asked for by Karmanya (P2) |
 
 ## Pre-existing work (before the baseline)
 

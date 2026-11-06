@@ -19,7 +19,13 @@ Entered in a Continuity track (Ship a Feature). Everything up to tag
 `pre-ethglobal-mumbai-2026` (`1dcafa3`, 2026-10-07) existed before the event. Only the work
 after it is new.
 
-- Built at the event: see the Shipped rows in the PRD.
+- Built at the event (details in the PRD):
+  - Admin-only spectator mode: organisers watch any live match from `/admin`
+  - Points (1 a second with the egg, 5 a steal, 30 for the win) and a live board in every match
+  - An all-time leaderboard at `/leaderboard`: longest hold, most steals, wins
+  - Xbox controller support on PC
+  - The phone stick on either side
+  - Settings → Controls for keyboard and mouse, controller and phone, with a live check
 - Docs:
   - [PRD](docs/ethglobal-mumbai/PRD.md): what we're building, and what came before
   - [Plan and build log](docs/ethglobal-mumbai/PLAN.md): one entry per push
